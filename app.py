@@ -1,4 +1,4 @@
-# app.py - Live Betting Tracker (Beginner-Friendly & Mobile Ready)
+# app.py - Live Betting Tracker
 
 import streamlit as st
 import matplotlib.pyplot as plt
@@ -7,13 +7,9 @@ import numpy as np
 st.set_page_config(layout="wide", page_title="Live Betting Tracker")
 st.title("🏀 Live Betting Tracker")
 
-# Initialize session history
 if "history" not in st.session_state:
     st.session_state.history = []
 
-# -------------------------------
-# INPUTS (left column)
-# -------------------------------
 col1, col2 = st.columns(2)
 
 with col1:
@@ -22,23 +18,18 @@ with col1:
     time_left = st.number_input("Minutes Left in Quarter", 0.0, 10.0, 5.0)
     line = st.number_input("Over/Under Line", value=40)
 
-# Calculate total and pace
 total = team1 + team2
-elapsed = 10 - time_left  # quarter length = 10 minutes
-
+elapsed = 10 - time_left
 st.session_state.history.append(total)
 
 if elapsed > 0:
     pace = total / elapsed
-    proj = pace * 10  # project total for full quarter
+    proj = pace * 10
 else:
     proj = total
 
 edge = proj - line
 
-# -------------------------------
-# DECISION & COLOR
-# -------------------------------
 if edge > 3 and time_left <= 4:
     decision = "OVER"
     color = "green"
@@ -57,9 +48,6 @@ with col2:
         unsafe_allow_html=True
     )
 
-# -------------------------------
-# BEEP ALERT
-# -------------------------------
 if decision in ["OVER", "UNDER"]:
     st.markdown(
         """
@@ -70,9 +58,6 @@ if decision in ["OVER", "UNDER"]:
         unsafe_allow_html=True
     )
 
-# -------------------------------
-# SCORE TREND GRAPH
-# -------------------------------
 fig, ax = plt.subplots()
 ax.plot(st.session_state.history, marker='o')
 ax.set_xlabel("Updates")
