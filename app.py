@@ -4,7 +4,7 @@ st.set_page_config(page_title="Pro Sports Predictor PRO", layout="wide")
 
 ---------------- API CONFIG ----------------
 
-API_KEY = "b9184d5537fc4e9ad41896f691476a90"  
+API_KEY = "b9184d5537fc4e9ad41896f691476a90"  #
 
 ---------------- LIVE API ----------------
 
