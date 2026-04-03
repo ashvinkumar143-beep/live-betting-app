@@ -1,167 +1,125 @@
-import streamlit as st
-import requests
-import time
-import pandas as pd
-
-st.set_page_config(page_title="🔥 AI Betting PRO MAX", layout="wide")
-
-# ---------------- KEYS ----------------
-API_KEY = "b9184d5537fc4e9ad41896f691476a90"
-BOT_TOKEN = "8693963685:AAFP9lmvOQFpLlRXp31sYYNEEA2-2wNHVjo"
-CHAT_ID = "6518682986"
-
-# ---------------- TELEGRAM ----------------
-def send_telegram(msg):
-    try:
-        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-        requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
-    except:
-        pass
-
-# ---------------- SESSION ----------------
-if "profit" not in st.session_state:
-    st.session_state.profit = 0
-
-if "bias" not in st.session_state:
-    st.session_state.bias = 0
-
-if "history" not in st.session_state:
-    st.session_state.history = []
-
-# ---------------- MODEL ----------------
-def model(total, line):
-    edge = total - line
-    prob = 50 + edge * 2 + st.session_state.bias
-    return max(5, min(95, prob))
-
-def value(prob, odds):
-    implied = 100 / odds
-    return prob - implied
-
-# ---------------- UI ----------------
-st.title("🔥 AI BETTING PRO MAX (AUTO BOT)")
-
-mode = st.sidebar.radio("Mode", ["Live", "Manual"])
-auto = st.sidebar.checkbox("Auto Signals (10s)")
-
-# ================= LIVE =================
-if mode == "Live":
-
-    st.subheader("🌐 LIVE AUTO SIGNALS")
+def basketball_pro_tool():
+    print("=== 🔥 PRO BASKETBALL BET TOOL (QUARTER MODE) ===")
 
     try:
-        url = f"https://api.the-odds-api.com/v4/sports/basketball_nba/scores/?apiKey={API_KEY}&daysFrom=1"
-        data = requests.get(url).json()
+        # Game type
+        print("\nGame Type:")
+        print("1 = NBA (12 min quarters)")
+        print("2 = FIBA (10 min quarters)")
+        choice = int(input("Choose (1/2): "))
 
-        if not data:
-            st.warning("No live matches now")
+        if choice == 1:
+            quarter_time = 12
+            total_game = 48
+        elif choice == 2:
+            quarter_time = 10
+            total_game = 40
+        else:
+            print("Invalid choice")
+            return
 
-        for g in data:
+        # Quarter input
+        quarter = int(input("Current Quarter (1-4): "))
+        time_in_q = float(input("Time elapsed in current quarter: "))
 
-            if not g.get("scores"):
-                continue
+        # Scores
+        q1 = int(input("Q1 total score: "))
+        q2 = int(input("Q2 total score: "))
+        q3 = int(input("Q3 total score: "))
+        q4 = int(input("Q4 total score (if not started = 0): "))
 
-            a = int(g["scores"][0]["score"])
-            b = int(g["scores"][1]["score"])
+        line = float(input("Bookmaker line: "))
 
-            total = a + b
-            line = total + 5
+        # Total score
+        total = q1 + q2 + q3 + q4
 
-            prob = model(total, line)
+        # Time played
+        minutes_played = (quarter - 1) * quarter_time + time_in_q
+        time_left = total_game - minutes_played
 
-            # -------- SIMULATED REAL ODDS --------
-            odds_over = 1.85
-            odds_under = 1.95
+        if minutes_played <= 0:
+            print("Invalid time")
+            return
 
-            value_over = value(prob, odds_over)
-            value_under = value(100 - prob, odds_under)
+        # 🔥 Current quarter pace (IMPORTANT)
+        if quarter == 1:
+            current_q_score = q1
+        elif quarter == 2:
+            current_q_score = q2
+        elif quarter == 3:
+            current_q_score = q3
+        else:
+            current_q_score = q4
 
-            st.markdown(f"### {g['teams'][0]} vs {g['teams'][1]}")
-            st.write(f"Score: {a} - {b}")
+        if time_in_q > 0:
+            current_pace = current_q_score / time_in_q
+        else:
+            current_pace = 0
 
-            st.progress(prob / 100)
-            st.write(f"🟢 OVER {int(prob)}% | Odds {odds_over}")
-            st.write(f"🔴 UNDER {100-int(prob)}% | Odds {odds_under}")
+        # 🔥 Base pace
+        base_pace = total / minutes_played
 
-            # -------- SIGNAL BOT --------
-            if value_over > 10:
-                msg = f"🔥 OVER BET\n{g['teams'][0]} vs {g['teams'][1]}\nProb: {int(prob)}%"
-                st.success(msg)
-                send_telegram(msg)
+        # 🔥 Weighted pace (SMART)
+        pace = (base_pace * 0.6) + (current_pace * 0.4)
 
-            elif value_under > 10:
-                msg = f"❄️ UNDER BET\n{g['teams'][0]} vs {g['teams'][1]}\nProb: {100-int(prob)}%"
-                st.error(msg)
-                send_telegram(msg)
+        predicted = total + (pace * time_left)
 
-            else:
-                st.info("No strong value")
+        # 🔥 Quarter adjustment
+        if quarter == 1:
+            predicted *= 0.95
+        elif quarter == 2:
+            predicted *= 1.00
+        elif quarter == 3:
+            predicted *= 0.97
+        elif quarter == 4:
+            predicted *= 1.08  # strong foul boost
+
+        diff = predicted - line
+
+        # OUTPUT
+        print("\n--- 📊 RESULT ---")
+        print(f"Total Score: {total}")
+        print(f"Predicted Final: {predicted:.2f}")
+        print(f"Line: {line}")
+        print(f"Difference: {diff:.2f}")
+
+        # DECISION
+        print("\n--- 🎯 DECISION ---")
+        if diff >= 10:
+            decision = "🔥 STRONG OVER"
+        elif diff >= 5:
+            decision = "👍 OVER"
+        elif diff <= -10:
+            decision = "🔥 STRONG UNDER"
+        elif diff <= -5:
+            decision = "👍 UNDER"
+        else:
+            decision = "⚖️ NO BET"
+
+        print(decision)
+
+        # 🔥 DOUBLE BET LOGIC
+        print("\n--- 💰 DOUBLE BET ---")
+        if abs(diff) >= 8 and quarter in [2, 3]:
+            print("✅ SAFE TO DOUBLE BET")
+
+            if "OVER" in decision:
+                print("Bet 1: Over (higher line) → SMALL stake")
+                print("Bet 2: Over (lower line) → BIG stake")
+            elif "UNDER" in decision:
+                print("Bet 1: Under (lower line) → SMALL stake")
+                print("Bet 2: Under (higher line) → BIG stake")
+
+            print("\nStake Example:")
+            print("SMALL = 50")
+            print("BIG = 150")
+
+        else:
+            print("❌ NO DOUBLE BET")
 
     except:
-        st.error("API error (use Manual mode)")
+        print("❌ Input error - use numbers only")
 
-# ================= MANUAL =================
-if mode == "Manual":
 
-    sport = st.selectbox("Sport", ["Basketball","Soccer","Tennis"])
-
-    if sport == "Basketball":
-        a = st.number_input("Score A", 0, 200, 60)
-        b = st.number_input("Score B", 0, 200, 58)
-        line = st.number_input("Line", 150, 300, 210)
-        total = a + b
-
-    elif sport == "Soccer":
-        a = st.number_input("Goals A", 0, 10, 1)
-        b = st.number_input("Goals B", 0, 10, 1)
-        line = st.number_input("Line", 0.5, 5.0, 2.5)
-        total = a + b
-
-    else:
-        s1 = st.number_input("P1 Sets", 0, 3, 1)
-        s2 = st.number_input("P2 Sets", 0, 3, 1)
-        total = (s1 - s2) * 10
-        line = 0
-
-    prob = model(total, line)
-
-    odds = st.number_input("Odds", 1.1, 5.0, 1.90)
-    val = value(prob, odds)
-
-    st.progress(prob / 100)
-    st.write(f"Prob: {int(prob)}%")
-    st.write(f"Value: {round(val,2)}")
-
-    if val > 10:
-        st.success("🔥 VALUE BET")
-
-        if st.button("Send Telegram Alert"):
-            send_telegram(f"🔥 MANUAL BET\nProb {int(prob)}%")
-
-    # -------- PROFIT TRACKER --------
-    st.subheader("💰 Profit Tracker")
-
-    if st.button("Win"):
-        st.session_state.profit += (odds - 1)
-
-    if st.button("Loss"):
-        st.session_state.profit -= 1
-
-    st.write(f"Total Profit: {round(st.session_state.profit,2)} units")
-
-# ================= AI LEARNING =================
-st.markdown("---")
-st.subheader("🧠 AI Learning")
-
-if st.button("Correct Prediction"):
-    st.session_state.bias += 1
-
-if st.button("Wrong Prediction"):
-    st.session_state.bias -= 1
-
-st.write(f"Model Bias: {st.session_state.bias}")
-
-# ---------------- AUTO REFRESH ----------------
-if auto:
-    time.sleep(10)
-    st.rerun()
+# RUN
+basketball_pro_tool()
