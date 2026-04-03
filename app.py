@@ -1,125 +1,96 @@
-def basketball_pro_tool():
-    print("=== 🔥 PRO BASKETBALL BET TOOL (QUARTER MODE) ===")
+import streamlit as st
+import time
 
-    try:
-        # Game type
-        print("\nGame Type:")
-        print("1 = NBA (12 min quarters)")
-        print("2 = FIBA (10 min quarters)")
-        choice = int(input("Choose (1/2): "))
+st.set_page_config(page_title="🏀 Betting Tool Pro", layout="centered")
 
-        if choice == 1:
-            quarter_time = 12
-            total_game = 48
-        elif choice == 2:
-            quarter_time = 10
-            total_game = 40
-        else:
-            print("Invalid choice")
-            return
+st.title("🏀 Basketball Quarter Betting Tool PRO")
 
-        # Quarter input
-        quarter = int(input("Current Quarter (1-4): "))
-        time_in_q = float(input("Time elapsed in current quarter: "))
+# -----------------------------
+# INPUT SECTION
+# -----------------------------
+st.header("📊 Enter Betting Details")
 
-        # Scores
-        q1 = int(input("Q1 total score: "))
-        q2 = int(input("Q2 total score: "))
-        q3 = int(input("Q3 total score: "))
-        q4 = int(input("Q4 total score (if not started = 0): "))
+odds1 = st.number_input("Bet 1 Odds", min_value=1.01, value=1.20)
+odds2 = st.number_input("Bet 2 Odds", min_value=1.01, value=1.25)
 
-        line = float(input("Bookmaker line: "))
+stake1 = st.number_input("Stake Bet 1", min_value=1.0, value=100.0)
+stake2 = st.number_input("Stake Bet 2", min_value=1.0, value=100.0)
 
-        # Total score
-        total = q1 + q2 + q3 + q4
+# -----------------------------
+# CALCULATE BUTTON
+# -----------------------------
+if st.button("💰 Calculate Strategy"):
+    total_stake = stake1 + stake2
 
-        # Time played
-        minutes_played = (quarter - 1) * quarter_time + time_in_q
-        time_left = total_game - minutes_played
+    win1 = odds1 * stake1
+    win2 = odds2 * stake2
 
-        if minutes_played <= 0:
-            print("Invalid time")
-            return
+    profit1 = win1 - total_stake
+    profit2 = win2 - total_stake
 
-        # 🔥 Current quarter pace (IMPORTANT)
-        if quarter == 1:
-            current_q_score = q1
-        elif quarter == 2:
-            current_q_score = q2
-        elif quarter == 3:
-            current_q_score = q3
-        else:
-            current_q_score = q4
+    st.subheader("📊 Results")
+    st.write(f"Total Stake: {total_stake:.2f}")
 
-        if time_in_q > 0:
-            current_pace = current_q_score / time_in_q
-        else:
-            current_pace = 0
+    st.write(f"➡️ If Bet 1 Wins: {profit1:.2f}")
+    st.write(f"➡️ If Bet 2 Wins: {profit2:.2f}")
 
-        # 🔥 Base pace
-        base_pace = total / minutes_played
+    if profit1 > 0 and profit2 > 0:
+        st.success("🔥 GUARANTEED PROFIT (NO LOSS)")
+    elif profit1 > 0 or profit2 > 0:
+        st.warning("⚠️ Partial Profit (One side wins)")
+    else:
+        st.error("❌ Loss on both sides")
 
-        # 🔥 Weighted pace (SMART)
-        pace = (base_pace * 0.6) + (current_pace * 0.4)
+# -----------------------------
+# SMART STAKE SUGGESTION
+# -----------------------------
+st.header("🧠 Smart No-Loss Stake Calculator")
 
-        predicted = total + (pace * time_left)
+base_stake = st.number_input("Base Stake", min_value=1.0, value=100.0)
 
-        # 🔥 Quarter adjustment
-        if quarter == 1:
-            predicted *= 0.95
-        elif quarter == 2:
-            predicted *= 1.00
-        elif quarter == 3:
-            predicted *= 0.97
-        elif quarter == 4:
-            predicted *= 1.08  # strong foul boost
+if st.button("⚖️ Auto Balance Stakes"):
+    stake_a = base_stake
+    stake_b = (odds1 * stake_a) / odds2
 
-        diff = predicted - line
+    total = stake_a + stake_b
+    win_a = odds1 * stake_a - total
+    win_b = odds2 * stake_b - total
 
-        # OUTPUT
-        print("\n--- 📊 RESULT ---")
-        print(f"Total Score: {total}")
-        print(f"Predicted Final: {predicted:.2f}")
-        print(f"Line: {line}")
-        print(f"Difference: {diff:.2f}")
+    st.subheader("💡 Suggested Stakes")
+    st.write(f"Bet 1 Stake: {stake_a:.2f}")
+    st.write(f"Bet 2 Stake: {stake_b:.2f}")
 
-        # DECISION
-        print("\n--- 🎯 DECISION ---")
-        if diff >= 10:
-            decision = "🔥 STRONG OVER"
-        elif diff >= 5:
-            decision = "👍 OVER"
-        elif diff <= -10:
-            decision = "🔥 STRONG UNDER"
-        elif diff <= -5:
-            decision = "👍 UNDER"
-        else:
-            decision = "⚖️ NO BET"
+    st.write(f"If Bet 1 Wins: {win_a:.2f}")
+    st.write(f"If Bet 2 Wins: {win_b:.2f}")
 
-        print(decision)
+# -----------------------------
+# QUARTER TIMER
+# -----------------------------
+st.header("⏱ Quarter Timer")
 
-        # 🔥 DOUBLE BET LOGIC
-        print("\n--- 💰 DOUBLE BET ---")
-        if abs(diff) >= 8 and quarter in [2, 3]:
-            print("✅ SAFE TO DOUBLE BET")
+minutes = st.selectbox("Select Quarter Duration", [10, 12])
 
-            if "OVER" in decision:
-                print("Bet 1: Over (higher line) → SMALL stake")
-                print("Bet 2: Over (lower line) → BIG stake")
-            elif "UNDER" in decision:
-                print("Bet 1: Under (lower line) → SMALL stake")
-                print("Bet 2: Under (higher line) → BIG stake")
+if st.button("▶️ Start Timer"):
+    total_seconds = minutes * 60
+    timer_placeholder = st.empty()
 
-            print("\nStake Example:")
-            print("SMALL = 50")
-            print("BIG = 150")
+    for i in range(total_seconds, 0, -1):
+        mins = i // 60
+        secs = i % 60
+        timer_placeholder.markdown(f"### ⏳ {mins:02d}:{secs:02d}")
+        time.sleep(1)
 
-        else:
-            print("❌ NO DOUBLE BET")
+    timer_placeholder.markdown("### ✅ Quarter Finished!")
 
-    except:
-        print("❌ Input error - use numbers only")
+# -----------------------------
+# STRATEGY TIPS
+# -----------------------------
+st.header("📈 Strategy Tips")
 
-
-# RUN
-basketball_pro_tool()
+st.write("""
+✅ Use odds between **1.20 – 1.40**  
+✅ Bet on different outcomes (Over/Under, Team A/B)  
+✅ Focus on **quarters** (more control)  
+✅ Avoid high odds (too risky)  
+✅ Use Smart Balance to reduce loss  
+""")
