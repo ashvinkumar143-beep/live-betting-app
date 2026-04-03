@@ -1,137 +1,147 @@
-import streamlit as st import time import requests import pandas as pd
+import streamlit as st
+import time
+import requests
+import pandas as pd
 
 st.set_page_config(page_title="Pro Sports Predictor PRO", layout="wide")
 
----------------- API CONFIG ----------------
+# ---------------- API CONFIG ----------------
+API_KEY = "b9184d5537fc4e9ad41896f691476a90"
 
-API_KEY = "b9184d5537fc4e9ad41896f691476a90"  #
+# ---------------- LIVE API ----------------
+def get_live_games():
+    try:
+        url = f"https://api.the-odds-api.com/v4/sports/basketball_nba/scores/?apiKey={API_KEY}&daysFrom=1"
+        res = requests.get(url)
+        data = res.json()
 
----------------- LIVE API ----------------
+        games = []
+        for g in data:
+            if g.get("scores") and len(g["scores"]) >= 2:
+                scoreA = int(g["scores"][0]["score"])
+                scoreB = int(g["scores"][1]["score"])
 
-def get_live_games(): try: url = f"https://api.the-odds-api.com/v4/sports/basketball_nba/scores/?apiKey={API_KEY}&daysFrom=1" res = requests.get(url) data = res.json()
+                games.append({
+                    "teams": [g["teams"][0], g["teams"][1]],
+                    "score": {"A": scoreA, "B": scoreB},
+                    "time_left": 50,  # simulated
+                    "line": scoreA + scoreB + 5
+                })
 
-games = []
-    for g in data:
-        if g.get("scores"):
-            scoreA = g["scores"][0]["score"]
-            scoreB = g["scores"][1]["score"]
+        return games
+    except Exception as e:
+        st.error(f"API Error: {e}")
+        return []
 
-            games.append({
-                "teams": [g["teams"][0], g["teams"][1]],
-                "score": {"A": scoreA, "B": scoreB},
-                "time_left": 50,  # API usually doesn't give → simulate
-                "line": scoreA + scoreB + 5
-            })
+# ---------------- BASKETBALL MODEL ----------------
+def basketball_model(total, line, time_left):
+    duration = 100
+    edge = total - line
 
-    return games
-except:
-    return []
+    time_factor = ((duration - time_left) / duration) ** 1.2
 
----------------- BASKETBALL MODEL ----------------
+    prob = 50 + (edge * 2.5 * time_factor)
 
-def basketball_model(total, line, time_left): duration = 100 edge = total - line
+    if time_left <= 20:
+        prob += edge * 1.5
 
-time_factor = ((duration - time_left) / duration) ** 1.2
+    prob = max(20, min(85, prob))
 
-prob = 50 + (edge * 2.5 * time_factor)
+    return round(prob), round(100 - prob)
 
-if time_left <= 20:
-    prob += edge * 1.5
+# ---------------- TENNIS MODEL ----------------
+def tennis_model(g1, g2):
+    total = g1 + g2
+    edge = g1 - g2
 
-prob = max(20, min(85, prob))
+    pressure = total / 12
+    if g1 >= 5 and g2 >= 5:
+        pressure += 0.3
 
-return round(prob), round(100 - prob)
+    prob = 50 + (edge * 6 * pressure)
+    prob = max(25, min(75, prob))
 
----------------- TENNIS MODEL ----------------
+    return round(prob), round(100 - prob)
 
-def tennis_model(g1, g2): total = g1 + g2 edge = g1 - g2
+# ---------------- ALERT ----------------
+def check_alert(over, under):
+    if over > 70:
+        return "🔥 STRONG OVER SIGNAL"
+    elif under > 70:
+        return "❄️ STRONG UNDER SIGNAL"
+    return None
 
-pressure = total / 12
-if g1 >= 5 and g2 >= 5:
-    pressure += 0.3
-
-prob = 50 + (edge * 6 * pressure)
-prob = max(25, min(75, prob))
-
-return round(prob), round(100 - prob)
-
----------------- ALERT SYSTEM ----------------
-
-def check_alert(over, under): if over > 70: return "🔥 STRONG OVER SIGNAL" elif under > 70: return "❄️ STRONG UNDER SIGNAL" return None
-
----------------- UI ----------------
-
+# ---------------- UI ----------------
 st.title("🔥 PRO SPORTS AI DASHBOARD")
 
 mode = st.sidebar.selectbox("Select Sport", ["Basketball", "Tennis"])
 
----------------- BASKETBALL ----------------
+# ---------------- BASKETBALL ----------------
+if mode == "Basketball":
+    st.subheader("🏀 LIVE GAMES")
 
-if mode == "Basketball": st.subheader("🏀 LIVE GAMES")
+    games = get_live_games()
 
-games = get_live_games()
-
-if not games:
-    st.warning("No live data — check API key")
-else:
-    options = [f"{i} - {g['teams'][0]} vs {g['teams'][1]}" for i, g in enumerate(games)]
-    selected = st.selectbox("Select Game", options)
-
-    idx = int(selected.split(" - ")[0])
-    game = games[idx]
-
-    total = sum(game["score"].values())
-    over, under = basketball_model(total, game["line"], game["time_left"])
-
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Total", total)
-    col2.metric("OVER %", f"{over}%")
-    col3.metric("UNDER %", f"{under}%")
-
-    # Alert
-    alert = check_alert(over, under)
-    if alert:
-        st.error(alert)
-
-    # Graph
-    st.subheader("📈 Prediction Trend")
-    df = pd.DataFrame({
-        "Step": list(range(1, 6)),
-        "Over %": [over - 5, over - 3, over, over + 2, over + 3]
-    })
-    st.line_chart(df.set_index("Step"))
-
-    # BEST BET
-    st.subheader("🎯 BEST BET")
-    if over > 65:
-        st.success("BET OVER")
-    elif under > 65:
-        st.error("BET UNDER")
+    if not games:
+        st.warning("No live data — check API key or wait for live games")
     else:
-        st.warning("NO STRONG BET")
+        options = [f"{i} - {g['teams'][0]} vs {g['teams'][1]}" for i, g in enumerate(games)]
+        selected = st.selectbox("Select Game", options)
 
----------------- TENNIS ----------------
+        idx = int(selected.split(" - ")[0])
+        game = games[idx]
 
-if mode == "Tennis": st.subheader("🎾 TENNIS AI")
+        total = sum(game["score"].values())
+        over, under = basketball_model(total, game["line"], game["time_left"])
 
-g1 = st.number_input("Player 1 Games", 0, 10, 3)
-g2 = st.number_input("Player 2 Games", 0, 10, 2)
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total", total)
+        col2.metric("OVER %", f"{over}%")
+        col3.metric("UNDER %", f"{under}%")
 
-p1, p2 = tennis_model(g1, g2)
+        alert = check_alert(over, under)
+        if alert:
+            st.error(alert)
 
-col1, col2 = st.columns(2)
-col1.metric("P1 %", f"{p1}%")
-col2.metric("P2 %", f"{p2}%")
+        st.subheader("📈 Prediction Trend")
+        df = pd.DataFrame({
+            "Step": list(range(1, 6)),
+            "Over %": [over - 5, over - 3, over, over + 2, over + 3]
+        })
+        st.line_chart(df.set_index("Step"))
 
-if p1 > 65:
-    st.success("🔥 Player 1 Strong")
-elif p2 > 65:
-    st.error("❄️ Player 2 Strong")
-else:
-    st.warning("⚖️ Balanced")
+        st.subheader("🎯 BEST BET")
+        if over > 65:
+            st.success("BET OVER")
+        elif under > 65:
+            st.error("BET UNDER")
+        else:
+            st.warning("NO STRONG BET")
 
----------------- AUTO REFRESH ----------------
+# ---------------- TENNIS ----------------
+if mode == "Tennis":
+    st.subheader("🎾 TENNIS AI")
 
-st.sidebar.markdown("---") auto = st.sidebar.checkbox("Auto Refresh (10s)")
+    g1 = st.number_input("Player 1 Games", 0, 10, 3)
+    g2 = st.number_input("Player 2 Games", 0, 10, 2)
 
-if auto: time.sleep(10) st.rerun()
+    p1, p2 = tennis_model(g1, g2)
+
+    col1, col2 = st.columns(2)
+    col1.metric("P1 %", f"{p1}%")
+    col2.metric("P2 %", f"{p2}%")
+
+    if p1 > 65:
+        st.success("🔥 Player 1 Strong")
+    elif p2 > 65:
+        st.error("❄️ Player 2 Strong")
+    else:
+        st.warning("⚖️ Balanced")
+
+# ---------------- AUTO REFRESH ----------------
+st.sidebar.markdown("---")
+auto = st.sidebar.checkbox("Auto Refresh (10s)")
+
+if auto:
+    time.sleep(10)
+    st.rerun()
