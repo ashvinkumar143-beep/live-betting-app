@@ -1,96 +1,92 @@
 import streamlit as st
 import time
+import pandas as pd
+import plotly.express as px
 
-st.set_page_config(page_title="🏀 Betting Tool Pro", layout="centered")
-
-st.title("🏀 Basketball Quarter Betting Tool PRO")
+st.set_page_config(page_title="🏀 Basketball Quarter PRO Predictor", layout="wide")
+st.title("🏀 Basketball Quarter PRO Predictor")
 
 # -----------------------------
 # INPUT SECTION
 # -----------------------------
-st.header("📊 Enter Betting Details")
+st.sidebar.header("📊 Input Current Quarter Data")
 
-odds1 = st.number_input("Bet 1 Odds", min_value=1.01, value=1.20)
-odds2 = st.number_input("Bet 2 Odds", min_value=1.01, value=1.25)
+team1_name = st.sidebar.text_input("Team 1 Name", "Team A")
+team2_name = st.sidebar.text_input("Team 2 Name", "Team B")
 
-stake1 = st.number_input("Stake Bet 1", min_value=1.0, value=100.0)
-stake2 = st.number_input("Stake Bet 2", min_value=1.0, value=100.0)
+team1_points = st.sidebar.number_input(f"{team1_name} Current Points", min_value=0, value=0)
+team2_points = st.sidebar.number_input(f"{team2_name} Current Points", min_value=0, value=0)
+
+line = st.sidebar.number_input("Quarter Total Line (Over/Under)", min_value=1.0, value=50.0)
+
+quarter_duration = st.sidebar.selectbox("Quarter Duration (minutes)", [10, 12])
+time_elapsed = st.sidebar.number_input("Time Elapsed in Quarter (minutes)", min_value=0.0,
+                                       max_value=float(quarter_duration), value=0.0, step=0.1)
+
+update_interval = st.sidebar.slider("Update Interval (seconds)", 1, 10, 5)
 
 # -----------------------------
-# CALCULATE BUTTON
+# CALCULATION & SIGNAL
 # -----------------------------
-if st.button("💰 Calculate Strategy"):
-    total_stake = stake1 + stake2
+def predict_points(team1_pts, team2_pts, elapsed, duration):
+    if elapsed == 0:
+        return team1_pts, team2_pts, 0
+    remaining_time = duration - elapsed
+    team1_rate = team1_pts / elapsed
+    team2_rate = team2_pts / elapsed
+    team1_pred = team1_pts + team1_rate * remaining_time
+    team2_pred = team2_pts + team2_rate * remaining_time
+    total_pred = team1_pred + team2_pred
+    return team1_pred, team2_pred, total_pred
 
-    win1 = odds1 * stake1
-    win2 = odds2 * stake2
+# -----------------------------
+# LIVE UPDATER
+# -----------------------------
+st.subheader("📈 Quarter Prediction & Signal")
+placeholder = st.empty()
+chart_placeholder = st.empty()
 
-    profit1 = win1 - total_stake
-    profit2 = win2 - total_stake
+df_chart = pd.DataFrame(columns=["Time (min)", f"{team1_name}", f"{team2_name}", "Total Predicted"])
 
-    st.subheader("📊 Results")
-    st.write(f"Total Stake: {total_stake:.2f}")
-
-    st.write(f"➡️ If Bet 1 Wins: {profit1:.2f}")
-    st.write(f"➡️ If Bet 2 Wins: {profit2:.2f}")
-
-    if profit1 > 0 and profit2 > 0:
-        st.success("🔥 GUARANTEED PROFIT (NO LOSS)")
-    elif profit1 > 0 or profit2 > 0:
-        st.warning("⚠️ Partial Profit (One side wins)")
+while True:
+    team1_pred, team2_pred, total_pred = predict_points(team1_points, team2_points, time_elapsed, quarter_duration)
+    
+    # Signal
+    if total_pred > line:
+        signal_text = "✅ OVER"
+        signal_color = "green"
+    elif total_pred < line:
+        signal_text = "❌ UNDER"
+        signal_color = "red"
     else:
-        st.error("❌ Loss on both sides")
-
-# -----------------------------
-# SMART STAKE SUGGESTION
-# -----------------------------
-st.header("🧠 Smart No-Loss Stake Calculator")
-
-base_stake = st.number_input("Base Stake", min_value=1.0, value=100.0)
-
-if st.button("⚖️ Auto Balance Stakes"):
-    stake_a = base_stake
-    stake_b = (odds1 * stake_a) / odds2
-
-    total = stake_a + stake_b
-    win_a = odds1 * stake_a - total
-    win_b = odds2 * stake_b - total
-
-    st.subheader("💡 Suggested Stakes")
-    st.write(f"Bet 1 Stake: {stake_a:.2f}")
-    st.write(f"Bet 2 Stake: {stake_b:.2f}")
-
-    st.write(f"If Bet 1 Wins: {win_a:.2f}")
-    st.write(f"If Bet 2 Wins: {win_b:.2f}")
-
-# -----------------------------
-# QUARTER TIMER
-# -----------------------------
-st.header("⏱ Quarter Timer")
-
-minutes = st.selectbox("Select Quarter Duration", [10, 12])
-
-if st.button("▶️ Start Timer"):
-    total_seconds = minutes * 60
-    timer_placeholder = st.empty()
-
-    for i in range(total_seconds, 0, -1):
-        mins = i // 60
-        secs = i % 60
-        timer_placeholder.markdown(f"### ⏳ {mins:02d}:{secs:02d}")
-        time.sleep(1)
-
-    timer_placeholder.markdown("### ✅ Quarter Finished!")
-
-# -----------------------------
-# STRATEGY TIPS
-# -----------------------------
-st.header("📈 Strategy Tips")
-
-st.write("""
-✅ Use odds between **1.20 – 1.40**  
-✅ Bet on different outcomes (Over/Under, Team A/B)  
-✅ Focus on **quarters** (more control)  
-✅ Avoid high odds (too risky)  
-✅ Use Smart Balance to reduce loss  
-""")
+        signal_text = "⚪ NO CLEAR SIGNAL"
+        signal_color = "gray"
+    
+    # Update main display
+    with placeholder.container():
+        st.write(f"**{team1_name} predicted points:** {team1_pred:.1f}")
+        st.write(f"**{team2_name} predicted points:** {team2_pred:.1f}")
+        st.write(f"**Total predicted points:** {total_pred:.1f} (Line: {line})")
+        st.markdown(f"<h2 style='color:{signal_color}'>{signal_text}</h2>", unsafe_allow_html=True)
+    
+    # Update chart
+    df_chart = pd.concat([df_chart, pd.DataFrame({
+        "Time (min)": [time_elapsed],
+        f"{team1_name}": [team1_pred],
+        f"{team2_name}": [team2_pred],
+        "Total Predicted": [total_pred]
+    })], ignore_index=True)
+    
+    fig = px.line(df_chart, x="Time (min)", y=[f"{team1_name}", f"{team2_name}", "Total Predicted"],
+                  labels={"value": "Predicted Points", "variable": "Team / Total"})
+    fig.update_layout(height=400, width=800, legend=dict(orientation="h"))
+    chart_placeholder.plotly_chart(fig)
+    
+    # Stop updating if quarter ends
+    if time_elapsed >= quarter_duration:
+        st.success("⏱ Quarter Finished!")
+        break
+    
+    # Wait and simulate time increment
+    time.sleep(update_interval)
+    time_elapsed = round(time_elapsed + update_interval/60, 2)
