@@ -1,104 +1,167 @@
 import streamlit as st
+import requests
 import time
+import pandas as pd
 
-st.set_page_config(page_title="Live Betting Predictor", layout="wide")
+st.set_page_config(page_title="🔥 AI Betting PRO MAX", layout="wide")
 
-st.title("🔥 Live Betting Predictor (Easy Version)")
+# ---------------- KEYS ----------------
+API_KEY = "b9184d5537fc4e9ad41896f691476a90"
+BOT_TOKEN = "8693963685:AAFP9lmvOQFpLlRXp31sYYNEEA2-2wNHVjo"
+CHAT_ID = "6518682986"
 
-# ---------------- SELECT SPORT ----------------
-sport = st.selectbox("Select Sport", ["Basketball", "Tennis"])
+# ---------------- TELEGRAM ----------------
+def send_telegram(msg):
+    try:
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
+    except:
+        pass
 
-# ================= BASKETBALL =================
-if sport == "Basketball":
+# ---------------- SESSION ----------------
+if "profit" not in st.session_state:
+    st.session_state.profit = 0
 
-    st.subheader("🏀 Basketball Live Input")
+if "bias" not in st.session_state:
+    st.session_state.bias = 0
 
-    col1, col2 = st.columns(2)
+if "history" not in st.session_state:
+    st.session_state.history = []
 
-    with col1:
-        teamA = st.number_input("Team A Score", 0, 200, 100)
-        teamB = st.number_input("Team B Score", 0, 200, 98)
+# ---------------- MODEL ----------------
+def model(total, line):
+    edge = total - line
+    prob = 50 + edge * 2 + st.session_state.bias
+    return max(5, min(95, prob))
 
-        quarter = st.selectbox("Quarter", [1, 2, 3, 4])
-        time_left = st.number_input("Seconds Left in Quarter", 0, 720, 300)
+def value(prob, odds):
+    implied = 100 / odds
+    return prob - implied
 
-    with col2:
-        line = st.number_input("Over/Under Line", 150, 300, 210)
+# ---------------- UI ----------------
+st.title("🔥 AI BETTING PRO MAX (AUTO BOT)")
 
-    # -------- CALCULATION --------
-    total = teamA + teamB
+mode = st.sidebar.radio("Mode", ["Live", "Manual"])
+auto = st.sidebar.checkbox("Auto Signals (10s)")
 
-    # total game time = 48 min = 2880 sec
-    elapsed = (quarter - 1) * 720 + (720 - time_left)
+# ================= LIVE =================
+if mode == "Live":
 
-    if elapsed > 0:
-        pace = total / elapsed
-        projected = total + pace * (2880 - elapsed)
+    st.subheader("🌐 LIVE AUTO SIGNALS")
+
+    try:
+        url = f"https://api.the-odds-api.com/v4/sports/basketball_nba/scores/?apiKey={API_KEY}&daysFrom=1"
+        data = requests.get(url).json()
+
+        if not data:
+            st.warning("No live matches now")
+
+        for g in data:
+
+            if not g.get("scores"):
+                continue
+
+            a = int(g["scores"][0]["score"])
+            b = int(g["scores"][1]["score"])
+
+            total = a + b
+            line = total + 5
+
+            prob = model(total, line)
+
+            # -------- SIMULATED REAL ODDS --------
+            odds_over = 1.85
+            odds_under = 1.95
+
+            value_over = value(prob, odds_over)
+            value_under = value(100 - prob, odds_under)
+
+            st.markdown(f"### {g['teams'][0]} vs {g['teams'][1]}")
+            st.write(f"Score: {a} - {b}")
+
+            st.progress(prob / 100)
+            st.write(f"🟢 OVER {int(prob)}% | Odds {odds_over}")
+            st.write(f"🔴 UNDER {100-int(prob)}% | Odds {odds_under}")
+
+            # -------- SIGNAL BOT --------
+            if value_over > 10:
+                msg = f"🔥 OVER BET\n{g['teams'][0]} vs {g['teams'][1]}\nProb: {int(prob)}%"
+                st.success(msg)
+                send_telegram(msg)
+
+            elif value_under > 10:
+                msg = f"❄️ UNDER BET\n{g['teams'][0]} vs {g['teams'][1]}\nProb: {100-int(prob)}%"
+                st.error(msg)
+                send_telegram(msg)
+
+            else:
+                st.info("No strong value")
+
+    except:
+        st.error("API error (use Manual mode)")
+
+# ================= MANUAL =================
+if mode == "Manual":
+
+    sport = st.selectbox("Sport", ["Basketball","Soccer","Tennis"])
+
+    if sport == "Basketball":
+        a = st.number_input("Score A", 0, 200, 60)
+        b = st.number_input("Score B", 0, 200, 58)
+        line = st.number_input("Line", 150, 300, 210)
+        total = a + b
+
+    elif sport == "Soccer":
+        a = st.number_input("Goals A", 0, 10, 1)
+        b = st.number_input("Goals B", 0, 10, 1)
+        line = st.number_input("Line", 0.5, 5.0, 2.5)
+        total = a + b
+
     else:
-        projected = total
+        s1 = st.number_input("P1 Sets", 0, 3, 1)
+        s2 = st.number_input("P2 Sets", 0, 3, 1)
+        total = (s1 - s2) * 10
+        line = 0
 
-    edge = projected - line
+    prob = model(total, line)
 
-    prob = 50 + edge * 2
-    prob = max(10, min(90, prob))
+    odds = st.number_input("Odds", 1.1, 5.0, 1.90)
+    val = value(prob, odds)
 
-    over = int(prob)
-    under = 100 - over
+    st.progress(prob / 100)
+    st.write(f"Prob: {int(prob)}%")
+    st.write(f"Value: {round(val,2)}")
 
-    # -------- OUTPUT --------
-    st.subheader("📊 Result")
+    if val > 10:
+        st.success("🔥 VALUE BET")
 
-    st.write(f"Total Score: {total}")
-    st.write(f"Projected Total: {int(projected)}")
+        if st.button("Send Telegram Alert"):
+            send_telegram(f"🔥 MANUAL BET\nProb {int(prob)}%")
 
-    col1, col2 = st.columns(2)
-    col1.metric("🟢 OVER %", f"{over}%")
-    col2.metric("🔴 UNDER %", f"{under}%")
+    # -------- PROFIT TRACKER --------
+    st.subheader("💰 Profit Tracker")
 
-    # Decision
-    if over > 65:
-        st.success("🔥 STRONG OVER")
-    elif under > 65:
-        st.error("❄️ STRONG UNDER")
-    else:
-        st.warning("⚖️ NO CLEAR BET")
+    if st.button("Win"):
+        st.session_state.profit += (odds - 1)
 
-# ================= TENNIS =================
-if sport == "Tennis":
+    if st.button("Loss"):
+        st.session_state.profit -= 1
 
-    st.subheader("🎾 Tennis Live Input")
+    st.write(f"Total Profit: {round(st.session_state.profit,2)} units")
 
-    p1 = st.number_input("Player 1 Games", 0, 7, 3)
-    p2 = st.number_input("Player 2 Games", 0, 7, 2)
+# ================= AI LEARNING =================
+st.markdown("---")
+st.subheader("🧠 AI Learning")
 
-    total = p1 + p2
-    edge = p1 - p2
+if st.button("Correct Prediction"):
+    st.session_state.bias += 1
 
-    pressure = total / 12
+if st.button("Wrong Prediction"):
+    st.session_state.bias -= 1
 
-    if p1 >= 5 and p2 >= 5:
-        pressure += 0.5
-
-    prob = 50 + edge * 8 * pressure
-    prob = max(20, min(80, prob))
-
-    st.subheader("📊 Result")
-
-    col1, col2 = st.columns(2)
-    col1.metric("Player 1 %", f"{int(prob)}%")
-    col2.metric("Player 2 %", f"{100-int(prob)}%")
-
-    if prob > 65:
-        st.success("🔥 Player 1 Strong")
-    elif prob < 35:
-        st.error("❄️ Player 2 Strong")
-    else:
-        st.warning("⚖️ Close Match")
+st.write(f"Model Bias: {st.session_state.bias}")
 
 # ---------------- AUTO REFRESH ----------------
-st.markdown("---")
-auto = st.checkbox("Auto Refresh (10s)")
-
 if auto:
     time.sleep(10)
     st.rerun()
