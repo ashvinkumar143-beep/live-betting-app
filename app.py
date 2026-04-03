@@ -1,95 +1,104 @@
 import streamlit as st
 import time
-import requests
-import pandas as pd
 
-st.set_page_config(page_title="Live Betting Predictor PRO", layout="wide")
+st.set_page_config(page_title="Live Betting Predictor", layout="wide")
 
-API_KEY = "b9184d5537fc4e9ad41896f691476a90"
+st.title("🔥 Live Betting Predictor (Easy Version)")
 
-# ---------------- GET GAMES ----------------
-def get_live_games():
-    try:
-        url = f"https://api.the-odds-api.com/v4/sports/basketball_nba/scores/?apiKey={API_KEY}&daysFrom=1"
-        res = requests.get(url)
-        data = res.json()
+# ---------------- SELECT SPORT ----------------
+sport = st.selectbox("Select Sport", ["Basketball", "Tennis"])
 
-        games = []
+# ================= BASKETBALL =================
+if sport == "Basketball":
 
-        if data:
-            for g in data:
-                scores = g.get("scores")
-                if scores and len(scores) >= 2:
-                    games.append({
-                        "teams": g.get("teams", ["Team A", "Team B"]),
-                        "score": {
-                            "A": int(scores[0].get("score", 0)),
-                            "B": int(scores[1].get("score", 0))
-                        },
-                        "time_left": 50,
-                        "line": 210
-                    })
+    st.subheader("🏀 Basketball Live Input")
 
-        if not games:
-            games = [
-                {"teams": ["Lakers", "Warriors"], "score": {"A": 110, "B": 115}, "time_left": 10, "line": 220}
-            ]
+    col1, col2 = st.columns(2)
 
-        return games
-    except:
-        return [{"teams": ["Demo A", "Demo B"], "score": {"A": 100, "B": 105}, "time_left": 20, "line": 210}]
+    with col1:
+        teamA = st.number_input("Team A Score", 0, 200, 100)
+        teamB = st.number_input("Team B Score", 0, 200, 98)
 
-# ---------------- MODEL ----------------
-def model(total, line, time_left):
-    duration = 100
-    edge = total - line
+        quarter = st.selectbox("Quarter", [1, 2, 3, 4])
+        time_left = st.number_input("Seconds Left in Quarter", 0, 720, 300)
+
+    with col2:
+        line = st.number_input("Over/Under Line", 150, 300, 210)
+
+    # -------- CALCULATION --------
+    total = teamA + teamB
+
+    # total game time = 48 min = 2880 sec
+    elapsed = (quarter - 1) * 720 + (720 - time_left)
+
+    if elapsed > 0:
+        pace = total / elapsed
+        projected = total + pace * (2880 - elapsed)
+    else:
+        projected = total
+
+    edge = projected - line
+
     prob = 50 + edge * 2
     prob = max(10, min(90, prob))
-    return int(prob), int(100 - prob)
 
-# ---------------- UI ----------------
-st.title("🔥 Live Betting Predictor PRO")
+    over = int(prob)
+    under = 100 - over
 
-games = get_live_games()
+    # -------- OUTPUT --------
+    st.subheader("📊 Result")
 
-options = [f"{i} - {g['teams'][0]} vs {g['teams'][1]}" for i, g in enumerate(games)]
-selected = st.selectbox("Select Game", options)
+    st.write(f"Total Score: {total}")
+    st.write(f"Projected Total: {int(projected)}")
 
-game = games[int(selected.split(" - ")[0])]
+    col1, col2 = st.columns(2)
+    col1.metric("🟢 OVER %", f"{over}%")
+    col2.metric("🔴 UNDER %", f"{under}%")
 
-total = game["score"]["A"] + game["score"]["B"]
-over, under = model(total, game["line"], game["time_left"])
+    # Decision
+    if over > 65:
+        st.success("🔥 STRONG OVER")
+    elif under > 65:
+        st.error("❄️ STRONG UNDER")
+    else:
+        st.warning("⚖️ NO CLEAR BET")
 
-# ---------------- DISPLAY ----------------
-col1, col2, col3 = st.columns(3)
+# ================= TENNIS =================
+if sport == "Tennis":
 
-col1.metric("🏀 Total Score", total)
-col2.metric("🟢 OVER %", f"{over}%")
-col3.metric("🔴 UNDER %", f"{under}%")
+    st.subheader("🎾 Tennis Live Input")
 
-# Progress bars
-st.progress(over / 100)
-st.progress(under / 100)
+    p1 = st.number_input("Player 1 Games", 0, 7, 3)
+    p2 = st.number_input("Player 2 Games", 0, 7, 2)
 
-# Decision
-if over > 65:
-    st.success("🔥 STRONG OVER SIGNAL")
-    st.balloons()
-elif under > 65:
-    st.error("❄️ STRONG UNDER SIGNAL")
-else:
-    st.warning("⚖️ NO CLEAR BET")
+    total = p1 + p2
+    edge = p1 - p2
 
-# Graph
-st.subheader("📈 Trend")
-df = pd.DataFrame({
-    "Step": [1,2,3,4,5],
-    "Score": [total-10, total-5, total, total+3, total+5]
-})
-st.line_chart(df.set_index("Step"))
+    pressure = total / 12
 
-# Auto refresh
+    if p1 >= 5 and p2 >= 5:
+        pressure += 0.5
+
+    prob = 50 + edge * 8 * pressure
+    prob = max(20, min(80, prob))
+
+    st.subheader("📊 Result")
+
+    col1, col2 = st.columns(2)
+    col1.metric("Player 1 %", f"{int(prob)}%")
+    col2.metric("Player 2 %", f"{100-int(prob)}%")
+
+    if prob > 65:
+        st.success("🔥 Player 1 Strong")
+    elif prob < 35:
+        st.error("❄️ Player 2 Strong")
+    else:
+        st.warning("⚖️ Close Match")
+
+# ---------------- AUTO REFRESH ----------------
+st.markdown("---")
 auto = st.checkbox("Auto Refresh (10s)")
+
 if auto:
     time.sleep(10)
     st.rerun()
