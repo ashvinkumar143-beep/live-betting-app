@@ -1,61 +1,146 @@
 import streamlit as st
+import requests
 
-st.set_page_config(page_title="🏀 Basketball Quarter Predictor", layout="centered")
-st.title("🏀 Basketball Quarter Predictor PRO")
+st.set_page_config(page_title="🏀 V9 ELITE AUTO BET SYSTEM", layout="centered")
 
-# -----------------------------
-# INPUT SECTION
-# -----------------------------
-st.header("📊 Current Quarter Data")
-
-team1_name = st.text_input("Team 1 Name", "Team A")
-team2_name = st.text_input("Team 2 Name", "Team B")
-
-team1_points = st.number_input(f"{team1_name} Current Points", min_value=0, value=0)
-team2_points = st.number_input(f"{team2_name} Current Points", min_value=0, value=0)
-
-line = st.number_input("Quarter Total Line (Over/Under)", min_value=1.0, value=50.0)
-
-quarter_duration = st.selectbox("Quarter Duration (minutes)", [10, 12])
-time_elapsed = st.number_input("Time Elapsed in Quarter (minutes)", min_value=0.0,
-                               max_value=float(quarter_duration), value=0.0, step=0.1)
+st.title("😎 V9 ELITE AUTO BET SYSTEM (Plug & Play)")
 
 # -----------------------------
-# PREDICTION FUNCTION
+# SETTINGS
 # -----------------------------
-def predict_points(team1_pts, team2_pts, elapsed, duration):
-    if elapsed == 0:
-        return team1_pts, team2_pts, 0
-    remaining_time = duration - elapsed
-    team1_rate = team1_pts / elapsed
-    team2_rate = team2_pts / elapsed
-    team1_pred = team1_pts + team1_rate * remaining_time
-    team2_pred = team2_pts + team2_rate * remaining_time
-    total_pred = team1_pred + team2_pred
-    return team1_pred, team2_pred, total_pred
+st.sidebar.header("⚙️ ELITE SETTINGS")
+default_line = st.sidebar.number_input("Default Line", value=50.0)
+min_ai_score = st.sidebar.slider("Min AI Score to Show", 60, 100, 75)
+project_full_game = st.sidebar.checkbox("Project Full Game Totals", True)
 
 # -----------------------------
-# BUTTON-BASED PREDICTION
+# FETCH LIVE NBA DATA
 # -----------------------------
-if st.button("📈 Predict Quarter Result"):
-    team1_pred, team2_pred, total_pred = predict_points(team1_points, team2_points, time_elapsed, quarter_duration)
+@st.cache_data(ttl=15)
+def fetch_live_games():
+    url = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard"
+    resp = requests.get(url)
+    data = resp.json()
+    return data.get("events", [])
+
+# -----------------------------
+# TIME ESTIMATION
+# -----------------------------
+def estimate_elapsed(status_text, period):
+    try:
+        if ":" in status_text:
+            time_str = status_text.split(" ")[-1]
+            m, s = time_str.split(":")
+            remain = int(m) + int(s)/60
+            elapsed = (period - 1) * 12 + (12 - remain)
+        else:
+            elapsed = period * 6
+    except:
+        elapsed = period * 6
+    return max(1, elapsed)
+
+# -----------------------------
+# AI LOGIC
+# -----------------------------
+def ai_analyze(p1, p2, elapsed, line, project_full=True):
+    total_now = p1 + p2
+    pace = total_now / elapsed
+
+    duration = 48 if project_full else 12
+    remain = duration - elapsed
+    predicted_total = total_now + pace * remain
+    diff = predicted_total - line
+
+    # Pace label
+    if pace > 2.6:
+        pace_label = "🔥 VERY FAST"
+    elif pace > 2.2:
+        pace_label = "⚡ FAST"
+    elif pace < 1.8:
+        pace_label = "🐢 SLOW"
+    else:
+        pace_label = "⚖️ NORMAL"
+
+    # Trap detection
+    trap = False
+    if abs(diff) < 3:
+        trap = True
+    if pace > 2.6 and line > predicted_total:
+        trap = True
+    if pace < 1.8 and line < predicted_total:
+        trap = True
+
+    # AI scoring
+    score = 50
+    score += 20 if pace > 2.5 else -20 if pace < 1.9 else 0
+    score += 30 if abs(diff) > 10 else -25 if abs(diff) < 4 else 0
+    score -= 50 if trap else 0
+    score = max(0, min(100, score))
 
     # Signal
-    if total_pred > line:
-        signal_text = "✅ OVER"
-        signal_color = "green"
-    elif total_pred < line:
-        signal_text = "❌ UNDER"
-        signal_color = "red"
+    if diff > 5:
+        signal = "OVER"
+    elif diff < -5:
+        signal = "UNDER"
     else:
-        signal_text = "⚪ NO CLEAR SIGNAL"
-        signal_color = "gray"
+        signal = "NO EDGE"
 
-    # Display
-    st.write(f"**{team1_name} predicted points:** {team1_pred:.1f}")
-    st.write(f"**{team2_name} predicted points:** {team2_pred:.1f}")
-    st.write(f"**Total predicted points:** {total_pred:.1f} (Line: {line})")
-    st.markdown(f"<h2 style='color:{signal_color}'>{signal_text}</h2>", unsafe_allow_html=True)
+    # Decision
+    if trap:
+        decision = "🚫 SKIP"
+    elif score >= 85:
+        decision = f"💰 GOD BET {signal}"
+    elif score >= 75:
+        decision = f"🔥 STRONG {signal}"
+    elif score >= 65:
+        decision = f"✅ {signal}"
+    else:
+        decision = "⚠️ WAIT"
 
-st.markdown("---")
-st.write("💡 **Tip:** Enter new points and time elapsed, then click 'Predict Quarter Result' each time to update signals.")
+    return predicted_total, pace_label, signal, decision, score
+
+# -----------------------------
+# MAIN SCAN BUTTON
+# -----------------------------
+if st.button("📡 SCAN LIVE NBA GAMES"):
+
+    games = fetch_live_games()
+    if not games:
+        st.warning("No live games currently.")
+    else:
+        found_signal = False
+
+        for game in games:
+            comp = game["competitions"][0]
+            teams = comp["competitors"]
+
+            team1 = teams[0]["team"]["name"]
+            team2 = teams[1]["team"]["name"]
+
+            p1 = int(teams[0]["score"])
+            p2 = int(teams[1]["score"])
+
+            status_text = comp["status"]["type"]["shortDetail"]
+            period = comp["status"]["period"]
+
+            elapsed = estimate_elapsed(status_text, period)
+
+            pred_total, pace_label, signal, decision, score = ai_analyze(
+                p1, p2, elapsed, default_line, project_full_game
+            )
+
+            # Show only strong opportunities
+            if score >= min_ai_score and "WAIT" not in decision:
+                found_signal = True
+                st.markdown("---")
+                st.subheader(f"{team1} vs {team2}")
+                st.write(f"Score: {p1} - {p2}")
+                st.write(f"Status: {status_text}")
+                st.write(f"Predicted Total: {pred_total:.1f}")
+                st.write(f"Pace: {pace_label}")
+                st.markdown(f"### 🎯 Signal: {signal}")
+                st.markdown(f"### 🤖 Score: {score}/100")
+                st.markdown(f"## 🚀 Decision: {decision}")
+
+        if not found_signal:
+            st.info("😴 No strong betting opportunities now — WAIT")
