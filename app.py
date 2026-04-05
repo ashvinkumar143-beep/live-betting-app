@@ -4,8 +4,8 @@ import json
 import os
 from datetime import datetime
 
-st.set_page_config(page_title="🏀 V11 ELITE AUTO BET SYSTEM", layout="centered")
-st.title("💎 V11 ELITE AUTO BET SYSTEM + Telegram + History")
+st.set_page_config(page_title="🏀 V12 ELITE AUTO BET SYSTEM", layout="centered")
+st.title("💎 V12 ELITE AUTO BET SYSTEM + Telegram + History + Multi-League + Test Mode")
 
 # -----------------------------
 # SETTINGS
@@ -17,17 +17,31 @@ project_full_game = st.sidebar.checkbox("Project Full Game Totals", True)
 telegram_token = st.sidebar.text_input("Telegram Bot Token (optional)")
 telegram_chat_id = st.sidebar.text_input("Telegram Chat ID (optional)")
 history_file = "bet_history.json"
+simulate_live = st.sidebar.checkbox("Simulate Live Game (for testing)")
 
 # -----------------------------
 # FETCH LIVE BASKETBALL DATA
 # -----------------------------
 @st.cache_data(ttl=15)
 def fetch_live_games():
-    # Multi-league: NBA + Euroleague + CBA (if ESPN supports)
-    url = "https://site.api.espn.com/apis/site/v2/sports/basketball/scoreboard"
-    resp = requests.get(url)
-    data = resp.json()
-    return data.get("events", [])
+    if simulate_live:
+        # Simulated live game for testing
+        return [{
+            "competitions": [{
+                "competitors": [
+                    {"team": {"name": "Mock Team A"}, "score": "45"},
+                    {"team": {"name": "Mock Team B"}, "score": "42"}
+                ],
+                "status": {"type": {"shortDetail": "Q2 05:00"}, "period": 2}
+            }]
+        }]
+    try:
+        url = "https://site.api.espn.com/apis/site/v2/sports/basketball/scoreboard"
+        resp = requests.get(url)
+        data = resp.json()
+        return data.get("events", [])
+    except:
+        return []
 
 # -----------------------------
 # TIME ESTIMATION
@@ -55,7 +69,7 @@ def ai_analyze(p1, p2, elapsed, line, project_full=True):
     duration = 48 if project_full else 12
     remain = max(duration - elapsed, 0)
     predicted_total = total_now + pace * remain
-    predicted_total = min(predicted_total, total_now + 100)  # realistic cap
+    predicted_total = min(predicted_total, total_now + 100)
     diff = predicted_total - line
 
     # Pace label
@@ -69,9 +83,7 @@ def ai_analyze(p1, p2, elapsed, line, project_full=True):
         pace_label = "⚖️ NORMAL"
 
     # Trap detection
-    trap = False
-    if abs(diff) < 3:
-        trap = True
+    trap = abs(diff) < 3
     if pace > 2.6 and line > predicted_total:
         trap = True
     if pace < 1.8 and line < predicted_total:
@@ -142,7 +154,7 @@ if os.path.exists(history_file):
     with open(history_file, "r") as f:
         history = json.load(f)
         if history:
-            for h in history[-10:]:  # last 10
+            for h in history[-10:]:
                 st.sidebar.write(f"{h['time']} | {h['teams']} | {h['decision']} | Score: {h['score']}")
         else:
             st.sidebar.write("No history yet.")
@@ -151,13 +163,11 @@ if os.path.exists(history_file):
 # MAIN SCAN
 # -----------------------------
 if st.button("📡 SCAN LIVE BASKETBALL GAMES"):
-
     games = fetch_live_games()
     if not games:
         st.warning("No live games currently.")
     else:
         found_signal = False
-
         for game in games:
             comp = game["competitions"][0]
             teams = comp["competitors"]
@@ -181,7 +191,6 @@ if st.button("📡 SCAN LIVE BASKETBALL GAMES"):
                 p1, p2, elapsed, default_line, project_full_game
             )
 
-            # Show only strong opportunities
             if score >= min_ai_score and "WAIT" not in decision:
                 found_signal = True
                 st.markdown("---")
@@ -198,7 +207,7 @@ if st.button("📡 SCAN LIVE BASKETBALL GAMES"):
                 message = f"GOD BET ALERT!\n{team1} vs {team2}\nScore: {p1}-{p2}\nSignal: {signal}\nDecision: {decision}"
                 send_telegram_alert(telegram_token, telegram_chat_id, message)
 
-                # Save to history
+                # Save history
                 game_info = {
                     "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     "teams": f"{team1} vs {team2}",
