@@ -1,9 +1,11 @@
 import streamlit as st
 import requests
+import json
+import os
+from datetime import datetime
 
-st.set_page_config(page_title="🏀 V9 ELITE AUTO BET SYSTEM", layout="centered")
-
-st.title("😎 V9 ELITE AUTO BET SYSTEM (Plug & Play)")
+st.set_page_config(page_title="🏀 V11 ELITE AUTO BET SYSTEM", layout="centered")
+st.title("💎 V11 ELITE AUTO BET SYSTEM + Telegram + History")
 
 # -----------------------------
 # SETTINGS
@@ -12,13 +14,17 @@ st.sidebar.header("⚙️ ELITE SETTINGS")
 default_line = st.sidebar.number_input("Default Line", value=50.0)
 min_ai_score = st.sidebar.slider("Min AI Score to Show", 60, 100, 75)
 project_full_game = st.sidebar.checkbox("Project Full Game Totals", True)
+telegram_token = st.sidebar.text_input("Telegram Bot Token (optional)")
+telegram_chat_id = st.sidebar.text_input("Telegram Chat ID (optional)")
+history_file = "bet_history.json"
 
 # -----------------------------
-# FETCH LIVE NBA DATA
+# FETCH LIVE BASKETBALL DATA
 # -----------------------------
 @st.cache_data(ttl=15)
 def fetch_live_games():
-    url = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard"
+    # Multi-league: NBA + Euroleague + CBA (if ESPN supports)
+    url = "https://site.api.espn.com/apis/site/v2/sports/basketball/scoreboard"
     resp = requests.get(url)
     data = resp.json()
     return data.get("events", [])
@@ -47,8 +53,9 @@ def ai_analyze(p1, p2, elapsed, line, project_full=True):
     pace = total_now / elapsed
 
     duration = 48 if project_full else 12
-    remain = duration - elapsed
+    remain = max(duration - elapsed, 0)
     predicted_total = total_now + pace * remain
+    predicted_total = min(predicted_total, total_now + 100)  # realistic cap
     diff = predicted_total - line
 
     # Pace label
@@ -100,9 +107,50 @@ def ai_analyze(p1, p2, elapsed, line, project_full=True):
     return predicted_total, pace_label, signal, decision, score
 
 # -----------------------------
-# MAIN SCAN BUTTON
+# TELEGRAM ALERT
 # -----------------------------
-if st.button("📡 SCAN LIVE NBA GAMES"):
+def send_telegram_alert(token, chat_id, message):
+    if not token or not chat_id:
+        return
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    try:
+        requests.post(url, data={"chat_id": chat_id, "text": message})
+    except:
+        pass
+
+# -----------------------------
+# SAVE HISTORY
+# -----------------------------
+def save_history(game_info):
+    history = []
+    if os.path.exists(history_file):
+        with open(history_file, "r") as f:
+            try:
+                history = json.load(f)
+            except:
+                history = []
+
+    history.append(game_info)
+    with open(history_file, "w") as f:
+        json.dump(history, f, indent=2)
+
+# -----------------------------
+# SHOW HISTORY
+# -----------------------------
+st.sidebar.header("📊 Bet History")
+if os.path.exists(history_file):
+    with open(history_file, "r") as f:
+        history = json.load(f)
+        if history:
+            for h in history[-10:]:  # last 10
+                st.sidebar.write(f"{h['time']} | {h['teams']} | {h['decision']} | Score: {h['score']}")
+        else:
+            st.sidebar.write("No history yet.")
+
+# -----------------------------
+# MAIN SCAN
+# -----------------------------
+if st.button("📡 SCAN LIVE BASKETBALL GAMES"):
 
     games = fetch_live_games()
     if not games:
@@ -123,6 +171,10 @@ if st.button("📡 SCAN LIVE NBA GAMES"):
             status_text = comp["status"]["type"]["shortDetail"]
             period = comp["status"]["period"]
 
+            # Skip finished games
+            if "Final" in status_text:
+                continue
+
             elapsed = estimate_elapsed(status_text, period)
 
             pred_total, pace_label, signal, decision, score = ai_analyze(
@@ -141,6 +193,21 @@ if st.button("📡 SCAN LIVE NBA GAMES"):
                 st.markdown(f"### 🎯 Signal: {signal}")
                 st.markdown(f"### 🤖 Score: {score}/100")
                 st.markdown(f"## 🚀 Decision: {decision}")
+
+                # Send Telegram alert
+                message = f"GOD BET ALERT!\n{team1} vs {team2}\nScore: {p1}-{p2}\nSignal: {signal}\nDecision: {decision}"
+                send_telegram_alert(telegram_token, telegram_chat_id, message)
+
+                # Save to history
+                game_info = {
+                    "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "teams": f"{team1} vs {team2}",
+                    "score": f"{p1}-{p2}",
+                    "signal": signal,
+                    "decision": decision,
+                    "ai_score": score
+                }
+                save_history(game_info)
 
         if not found_signal:
             st.info("😴 No strong betting opportunities now — WAIT")
