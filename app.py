@@ -1,49 +1,21 @@
 import streamlit as st
 import pandas as pd
 import requests
+from datetime import datetime
 import json
 import os
-from datetime import datetime
-import random
 
-st.set_page_config(page_title="🏀 V18 BET TOOL", layout="centered")
-st.title("🏀 V18 – Quarter & Minute Prediction Betting Tool")
+st.set_page_config(page_title="V20 PRO BET TOOL", layout="centered")
+st.title("🏀 V20 – SIMPLE HIGH PROBABILITY TOOL")
 
 # ---------------- SETTINGS ----------------
 st.sidebar.header("⚙️ SETTINGS")
-default_line = st.sidebar.number_input("Default Line (Total Points)", 0.0, 300.0, 50.0)
-min_signal_diff = st.sidebar.number_input("Min Points Difference for Signal", 1, 20, 5)
-quarter_duration = st.sidebar.number_input("Quarter Duration (minutes)", 8, 15, 12)
+line = st.sidebar.number_input("Total Line", 100.0, 300.0, 160.0)
+quarter_minutes = st.sidebar.selectbox("Quarter Length", [10, 12])
+edge = st.sidebar.slider("Signal Strength", 3, 15, 6)
 
-# Correct Telegram input
-telegram_token = st.sidebar.text_input("Telegram Token (optional)")
-telegram_chat_id = st.sidebar.text_input("Telegram Chat ID (optional)")
-
-history_file = "history.json"
-
-# ---------------- HISTORY ----------------
-def save_history(data):
-    hist = []
-    if os.path.exists(history_file):
-        try:
-            hist = json.load(open(history_file))
-        except:
-            hist = []
-    hist.append(data)
-    if len(hist) > 50:
-        hist = hist[-50:]
-    json.dump(hist, open(history_file, "w"), indent=2)
-
-st.sidebar.header("📊 HISTORY (last 10)")
-if os.path.exists(history_file):
-    try:
-        hist = json.load(open(history_file))
-        for h in hist[-10:]:
-            st.sidebar.write(f"{h['time']} | {h['game']} | {h['signal']} | {h['pred_total']:.1f}")
-    except:
-        st.sidebar.write("No history yet.")
-else:
-    st.sidebar.write("No history yet.")
+telegram_token = st.sidebar.text_input("Telegram Token")
+telegram_chat_id = st.sidebar.text_input("Chat ID")
 
 # ---------------- TELEGRAM ----------------
 def send_telegram(msg):
@@ -54,107 +26,114 @@ def send_telegram(msg):
         except:
             pass
 
-# ---------------- PREDICTION ----------------
-def predict_quarter(team1_score, team2_score, quarter_num, minutes_elapsed, line, league="NBA"):
-    league_avg = {"NBA": 25, "CBA": 22, "Euro": 20, "NCAA": 18}
-    avg_per_quarter = league_avg.get(league, 22)
-    
-    current_q_points = team1_score + team2_score
-    remaining_minutes = quarter_duration - minutes_elapsed
-    if remaining_minutes < 0:
-        remaining_minutes = 0.1
-    
-    pace = current_q_points / max(minutes_elapsed, 1)
-    adjust = random.uniform(0.9,1.1)
-    remaining_points = pace * remaining_minutes * adjust
-    pred_q_total = current_q_points + remaining_points
-    
-    remaining_quarters = 4 - quarter_num
-    avg_remaining_points = avg_per_quarter * 2 * remaining_quarters
-    pred_total = pred_q_total + avg_remaining_points
-    
-    if pred_total > line + min_signal_diff:
-        signal = "OVER"
-    elif pred_total < line - min_signal_diff:
-        signal = "UNDER"
+# ---------------- INPUT ----------------
+st.header("📊 LIVE INPUT")
+
+col1, col2 = st.columns(2)
+with col1:
+    score1 = st.number_input("Team A Score", 0, 200, 50)
+with col2:
+    score2 = st.number_input("Team B Score", 0, 200, 48)
+
+quarter = st.selectbox("Quarter", [1,2,3,4])
+minutes = st.number_input("Minutes Played", 0.0, float(quarter_minutes), 5.0)
+
+# ---------------- CORE CALCULATION ----------------
+def calculate():
+    total = score1 + score2
+    time_played = max(minutes, 1)
+
+    # Stable pace
+    pace = total / time_played
+    pace = max(2.5, min(pace, 5.5))  # realistic clamp
+
+    remaining = quarter_minutes - minutes
+
+    # Split pace by team ratio
+    if total == 0:
+        ratio1 = 0.5
+        ratio2 = 0.5
     else:
-        signal = "NO EDGE"
-    
-    per_minute = {}
-    for m in range(1, int(remaining_minutes)+1):
-        per_minute[m] = pace * m * adjust
-    
-    return pred_total, pred_q_total, signal, per_minute
+        ratio1 = score1 / total
+        ratio2 = score2 / total
 
-# ---------------- MANUAL INPUT ----------------
-st.header("✍️ Manual Input Mode")
-team1 = st.text_input("Team 1")
-team2 = st.text_input("Team 2")
-team1_score = st.number_input("Team 1 Current Points", 0, 200, 50)
-team2_score = st.number_input("Team 2 Current Points", 0, 200, 48)
-quarter_num = st.number_input("Quarter Number", 1, 4, 1)
-minutes_elapsed = st.number_input("Minutes Elapsed in Quarter", 0, quarter_duration, 5)
-line = st.number_input("Line (Total Points)", 0.0, 300.0, default_line)
-league = st.selectbox("League", ["NBA","CBA","Euro","NCAA"])
+    # Remaining points
+    remain_total = pace * remaining
+    remain_team1 = remain_total * ratio1
+    remain_team2 = remain_total * ratio2
 
-if st.button("Calculate Prediction"):
-    pred_total, pred_q_total, signal, per_minute = predict_quarter(
-        team1_score, team2_score, quarter_num, minutes_elapsed, line, league
-    )
-    
-    st.subheader(f"{team1} vs {team2} | Quarter {quarter_num}")
-    st.write(f"Predicted Total for this Quarter: {pred_q_total:.1f}")
-    st.write(f"Predicted Full Game Total: {pred_total:.1f}")
-    st.write(f"Signal: {signal}")
-    
-    minute_df = pd.DataFrame({
-        "Minute": list(per_minute.keys()),
-        "Predicted Points Remaining": [round(v,1) for v in per_minute.values()]
+    # Quarter END prediction (TEAM LEVEL ✅)
+    team1_end = score1 + remain_team1
+    team2_end = score2 + remain_team2
+    quarter_end_total = team1_end + team2_end
+
+    # Full game projection
+    remaining_q = 4 - quarter
+    future_pts = pace * quarter_minutes * remaining_q
+    final_total = quarter_end_total + future_pts
+
+    # Confidence logic
+    diff = final_total - line
+    if diff > edge:
+        signal = "🔥 OVER"
+        confidence = min(100, int(diff * 5))
+    elif diff < -edge:
+        signal = "❄️ UNDER"
+        confidence = min(100, int(abs(diff) * 5))
+    else:
+        signal = "NO BET"
+        confidence = 50
+
+    return pace, remaining, team1_end, team2_end, quarter_end_total, final_total, signal, confidence
+
+# ---------------- RUN ----------------
+if st.button("🚀 CALCULATE"):
+    pace, rem, t1_end, t2_end, q_end, final_total, signal, conf = calculate()
+
+    st.subheader("📈 RESULT")
+
+    st.write(f"Current Total: {score1 + score2}")
+    st.write(f"Pace: {pace:.2f} pts/min")
+    st.write(f"Time Remaining: {rem:.1f} min")
+
+    st.markdown("### 🧠 QUARTER END PREDICTION")
+    st.write(f"Team A: {t1_end:.1f}")
+    st.write(f"Team B: {t2_end:.1f}")
+    st.write(f"Total: {q_end:.1f}")
+
+    st.markdown("### 🎯 FINAL GAME PREDICTION")
+    st.write(f"Projected Total: {final_total:.1f}")
+
+    st.markdown("### 🔥 SIGNAL")
+    st.write(f"{signal} | Confidence: {conf}%")
+
+    # ---------------- MINUTE BREAKDOWN ----------------
+    st.markdown("### ⏱️ NEXT MINUTES PROJECTION")
+
+    data = []
+    for i in range(1, int(rem)+1):
+        pts = pace * i
+        data.append(round(pts,1))
+
+    df = pd.DataFrame({
+        "Minute Ahead": list(range(1, int(rem)+1)),
+        "Expected Total Points Added": data
     })
-    st.table(minute_df)
-    
-    if signal != "NO EDGE":
-        msg = f"{team1} vs {team2}\nQuarter {quarter_num}\nSignal: {signal}\nPred Total: {pred_total:.1f}"
+
+    st.table(df)
+
+    # ---------------- TELEGRAM ----------------
+    if signal != "NO BET":
+        msg = f"""🏀 LIVE BET V20
+
+Score: {score1}-{score2}
+Q{quarter} | {minutes}min
+
+Quarter End:
+A {t1_end:.1f} - B {t2_end:.1f}
+
+Final: {final_total:.1f}
+
+{signal} ({conf}%)
+"""
         send_telegram(msg)
-    
-    save_history({
-        "time": str(datetime.now()),
-        "game": f"{team1} vs {team2}",
-        "signal": signal,
-        "pred_total": pred_total
-    })
-
-# ---------------- SIMULATED LIVE ----------------
-st.header("📡 Simulated Live Mode")
-if st.button("Simulate Live Games"):
-    sample_games = [
-        {"teams":["Lakers","Warriors"], "score":[55,52], "quarter":3, "minutes_elapsed":6,"league":"NBA"},
-        {"teams":["CBA Team A","CBA Team B"], "score":[48,50], "quarter":2,"minutes_elapsed":4,"league":"CBA"},
-        {"teams":["Euro Team X","Euro Team Y"], "score":[60,57], "quarter":1,"minutes_elapsed":8,"league":"Euro"}
-    ]
-    
-    for g in sample_games:
-        pred_total, pred_q_total, signal, per_minute = predict_quarter(
-            g["score"][0], g["score"][1], g["quarter"], g["minutes_elapsed"], default_line, g["league"]
-        )
-        st.subheader(f"{g['teams'][0]} vs {g['teams'][1]} | Quarter {g['quarter']}")
-        st.write(f"Predicted Total for this Quarter: {pred_q_total:.1f}")
-        st.write(f"Predicted Full Game Total: {pred_total:.1f}")
-        st.write(f"Signal: {signal}")
-        
-        minute_df = pd.DataFrame({
-            "Minute": list(per_minute.keys()),
-            "Predicted Points Remaining": [round(v,1) for v in per_minute.values()]
-        })
-        st.table(minute_df)
-        
-        if signal != "NO EDGE":
-            msg = f"{g['teams'][0]} vs {g['teams'][1]}\nQuarter {g['quarter']}\nSignal: {signal}\nPred Total: {pred_total:.1f}"
-            send_telegram(msg)
-        
-        save_history({
-            "time": str(datetime.now()),
-            "game": f"{g['teams'][0]} vs {g['teams'][1]}",
-            "signal": signal,
-            "pred_total": pred_total
-        })
