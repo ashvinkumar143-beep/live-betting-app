@@ -1,18 +1,18 @@
 import streamlit as st
 import pandas as pd
 import requests
-from datetime import datetime
-import json
-import os
+import time
 
-st.set_page_config(page_title="V20 PRO BET TOOL", layout="centered")
-st.title("🏀 V20 – SIMPLE HIGH PROBABILITY TOOL")
+st.set_page_config(page_title="V21 AUTO PRO", layout="centered")
+st.title("🏀 V21 AUTO PRO (STABLE)")
 
 # ---------------- SETTINGS ----------------
 st.sidebar.header("⚙️ SETTINGS")
+
 line = st.sidebar.number_input("Total Line", 100.0, 300.0, 160.0)
 quarter_minutes = st.sidebar.selectbox("Quarter Length", [10, 12])
-edge = st.sidebar.slider("Signal Strength", 3, 15, 6)
+edge = st.sidebar.slider("Signal Strength", 4, 15, 7)
+refresh_rate = st.sidebar.slider("Auto Refresh (sec)", 3, 20, 5)
 
 telegram_token = st.sidebar.text_input("Telegram Token")
 telegram_chat_id = st.sidebar.text_input("Chat ID")
@@ -38,102 +38,100 @@ with col2:
 quarter = st.selectbox("Quarter", [1,2,3,4])
 minutes = st.number_input("Minutes Played", 0.0, float(quarter_minutes), 5.0)
 
-# ---------------- CORE CALCULATION ----------------
+# ---------------- CALCULATION ----------------
 def calculate():
     total = score1 + score2
     time_played = max(minutes, 1)
 
-    # Stable pace
     pace = total / time_played
-    pace = max(2.5, min(pace, 5.5))  # realistic clamp
+    pace = max(2.5, min(pace, 5.5))
 
     remaining = quarter_minutes - minutes
 
-    # Split pace by team ratio
     if total == 0:
-        ratio1 = 0.5
-        ratio2 = 0.5
+        r1, r2 = 0.5, 0.5
     else:
-        ratio1 = score1 / total
-        ratio2 = score2 / total
+        r1 = score1 / total
+        r2 = score2 / total
 
-    # Remaining points
     remain_total = pace * remaining
-    remain_team1 = remain_total * ratio1
-    remain_team2 = remain_total * ratio2
+    t1_end = score1 + (remain_total * r1)
+    t2_end = score2 + (remain_total * r2)
 
-    # Quarter END prediction (TEAM LEVEL ✅)
-    team1_end = score1 + remain_team1
-    team2_end = score2 + remain_team2
-    quarter_end_total = team1_end + team2_end
+    q_end = t1_end + t2_end
 
-    # Full game projection
     remaining_q = 4 - quarter
     future_pts = pace * quarter_minutes * remaining_q
-    final_total = quarter_end_total + future_pts
+    final_total = q_end + future_pts
 
-    # Confidence logic
     diff = final_total - line
+
     if diff > edge:
         signal = "🔥 OVER"
-        confidence = min(100, int(diff * 5))
+        conf = min(100, int(diff * 5))
     elif diff < -edge:
         signal = "❄️ UNDER"
-        confidence = min(100, int(abs(diff) * 5))
+        conf = min(100, int(abs(diff) * 5))
     else:
         signal = "NO BET"
-        confidence = 50
+        conf = 50
 
-    return pace, remaining, team1_end, team2_end, quarter_end_total, final_total, signal, confidence
+    return pace, remaining, t1_end, t2_end, q_end, final_total, signal, conf
 
-# ---------------- RUN ----------------
-if st.button("🚀 CALCULATE"):
-    pace, rem, t1_end, t2_end, q_end, final_total, signal, conf = calculate()
+# ---------------- AUTO TOGGLE ----------------
+auto = st.checkbox("🔄 Auto Refresh")
 
-    st.subheader("📈 RESULT")
+# ---------------- DISPLAY ----------------
+placeholder = st.empty()
 
-    st.write(f"Current Total: {score1 + score2}")
-    st.write(f"Pace: {pace:.2f} pts/min")
-    st.write(f"Time Remaining: {rem:.1f} min")
+def run_app():
+    with placeholder.container():
+        pace, rem, t1_end, t2_end, q_end, final_total, signal, conf = calculate()
 
-    st.markdown("### 🧠 QUARTER END PREDICTION")
-    st.write(f"Team A: {t1_end:.1f}")
-    st.write(f"Team B: {t2_end:.1f}")
-    st.write(f"Total: {q_end:.1f}")
+        st.subheader("📈 RESULT")
 
-    st.markdown("### 🎯 FINAL GAME PREDICTION")
-    st.write(f"Projected Total: {final_total:.1f}")
+        st.write(f"Score: {score1} - {score2}")
+        st.write(f"Pace: {pace:.2f} pts/min")
 
-    st.markdown("### 🔥 SIGNAL")
-    st.write(f"{signal} | Confidence: {conf}%")
+        st.markdown("### 🧠 Quarter End")
+        st.write(f"A: {t1_end:.1f} | B: {t2_end:.1f}")
+        st.write(f"Total: {q_end:.1f}")
 
-    # ---------------- MINUTE BREAKDOWN ----------------
-    st.markdown("### ⏱️ NEXT MINUTES PROJECTION")
+        st.markdown("### 🎯 Final")
+        st.write(f"{final_total:.1f}")
 
-    data = []
-    for i in range(1, int(rem)+1):
-        pts = pace * i
-        data.append(round(pts,1))
+        st.markdown("### 🔥 Signal")
+        st.write(f"{signal} | {conf}%")
 
-    df = pd.DataFrame({
-        "Minute Ahead": list(range(1, int(rem)+1)),
-        "Expected Total Points Added": data
-    })
+        # minute projection
+        st.markdown("### ⏱️ Next Minutes")
+        mins = int(rem)
+        data = [round(pace * i,1) for i in range(1, mins+1)]
 
-    st.table(df)
+        df = pd.DataFrame({
+            "Minute Ahead": list(range(1, mins+1)),
+            "Expected Points": data
+        })
+        st.table(df)
 
-    # ---------------- TELEGRAM ----------------
-    if signal != "NO BET":
-        msg = f"""🏀 LIVE BET V20
+        # Telegram alert (only strong)
+        if conf >= 75 and signal != "NO BET":
+            msg = f"""🏀 LIVE ALERT
 
 Score: {score1}-{score2}
-Q{quarter} | {minutes}min
+Q{quarter}
 
-Quarter End:
-A {t1_end:.1f} - B {t2_end:.1f}
-
+Quarter End: {q_end:.1f}
 Final: {final_total:.1f}
 
 {signal} ({conf}%)
 """
-        send_telegram(msg)
+            send_telegram(msg)
+
+# Run once
+run_app()
+
+# Auto refresh
+if auto:
+    time.sleep(refresh_rate)
+    st.rerun()
