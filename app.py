@@ -1,195 +1,156 @@
 import streamlit as st
 import time
 
-st.set_page_config(page_title="V22 Betting Tool", layout="wide")
+st.set_page_config(page_title="V23 Smart Betting Tool", layout="wide")
 
-# =========================
-# SESSION STATE
-# =========================
-if "history" not in st.session_state:
-    st.session_state.history = []
+# =============================
+# AUTO REFRESH (IMPORTANT)
+# =============================
+refresh_rate = 3  # seconds
+st.empty()
+time.sleep(refresh_rate)
+st.experimental_rerun()
 
-# =========================
-# SETTINGS SIDEBAR
-# =========================
-st.sidebar.header("⚙️ SETTINGS")
+# =============================
+# MODE SELECT
+# =============================
+mode = st.sidebar.selectbox("Select Mode", ["Basketball", "Table Tennis"])
 
-line = st.sidebar.number_input("Default Line", value=160.0)
-quarter_minutes = st.sidebar.selectbox("Quarter Duration", [10, 12])
+# =============================
+# SETTINGS
+# =============================
+line = st.sidebar.number_input("Default Line", value=150.0)
+quarter_duration = st.sidebar.selectbox("Quarter Duration", [10, 12])
 boost = st.sidebar.slider("Manual Boost (%)", -10, 10, 0)
 
-st.sidebar.markdown("----")
-
-st.sidebar.subheader("📊 HISTORY (last 10)")
-for h in st.session_state.history[-10:][::-1]:
-    st.sidebar.write(h)
-
-# =========================
-# MODE SELECT
-# =========================
-mode = st.selectbox("Select Mode", ["Basketball", "Table Tennis"])
-
-# =========================
+# =============================
 # 🏀 BASKETBALL MODE
-# =========================
+# =============================
 if mode == "Basketball":
-    st.title("🏀 Basketball Prediction Tool")
+
+    st.title("🏀 Basketball Live Predictor")
 
     col1, col2 = st.columns(2)
 
     with col1:
-        team_a = st.text_input("Team A", "A")
-        score_a = st.number_input("Score A", 0, 200, 50)
+        score1 = st.number_input("Team 1 Score", 0, 200, 0)
+        score2 = st.number_input("Team 2 Score", 0, 200, 0)
 
     with col2:
-        team_b = st.text_input("Team B", "B")
-        score_b = st.number_input("Score B", 0, 200, 48)
+        quarter = st.selectbox("Quarter", [1,2,3,4])
+        minutes = st.number_input("Minutes Elapsed", 0.1, float(quarter_duration), 5.0)
 
-    quarter = st.selectbox("Quarter", [1, 2, 3, 4])
-    minutes_elapsed = st.slider("Minutes Elapsed", 0.0, float(quarter_minutes), 6.0)
+    total = score1 + score2
 
-    st.markdown("---")
-
-    # =========================
-    # CALCULATION ENGINE
-    # =========================
-
-    total_score = score_a + score_b
-
-    if minutes_elapsed == 0:
-        st.warning("Enter minutes > 0")
+    # SAFE CALCULATION
+    if minutes > 0:
+        pace = total / minutes
     else:
-        elapsed_seconds = minutes_elapsed * 60
-        total_seconds_game = quarter_minutes * 60 * 4
+        pace = 0
 
-        # Pace calculation
-        pps = total_score / elapsed_seconds
+    remaining = quarter_duration - minutes
+    remain_pts = pace * remaining
 
-        # Boost
-        pps = pps * (1 + boost / 100)
+    # Boost adjust
+    remain_pts = remain_pts * (1 + boost/100)
 
-        # End slowdown (last 2 minutes of Q4)
-        if quarter == 4 and (quarter_minutes - minutes_elapsed) <= 2:
-            pps *= 0.9
+    # Team split
+    ratio1 = score1 / total if total > 0 else 0.5
+    ratio2 = score2 / total if total > 0 else 0.5
 
-        # Full game prediction
-        predicted_total = pps * total_seconds_game
+    t1_pred = score1 + remain_pts * ratio1
+    t2_pred = score2 + remain_pts * ratio2
 
-        # Team split
-        if total_score > 0:
-            ratio_a = score_a / total_score
-            ratio_b = score_b / total_score
-        else:
-            ratio_a = ratio_b = 0.5
+    quarter_total = t1_pred + t2_pred
+    full_game = (quarter_total * 4) / quarter
 
-        pred_a = predicted_total * ratio_a
-        pred_b = predicted_total * ratio_b
+    edge = full_game - line
 
-        # Quarter prediction
-        quarter_seconds_total = quarter_minutes * 60
-        pps_quarter = total_score / elapsed_seconds
-        predicted_quarter = pps_quarter * quarter_seconds_total
+    if edge > 8:
+        signal = "🔥 OVER"
+    elif edge < -8:
+        signal = "❄️ UNDER"
+    else:
+        signal = "⚖️ NO BET"
 
-        # Range (more realistic)
-        low = predicted_total * 0.97
-        high = predicted_total * 1.03
+    # OUTPUT
+    st.subheader("📊 Prediction")
 
-        # Signal
-        edge = predicted_total - line
+    st.write(f"Current Score → {score1} : {score2}")
+    st.write(f"Pace → {pace:.2f}")
 
-        if edge > 5:
-            signal = "🔥 STRONG OVER"
-        elif edge > 2:
-            signal = "✅ OVER"
-        elif edge < -5:
-            signal = "❄️ STRONG UNDER"
-        elif edge < -2:
-            signal = "⬇️ UNDER"
-        else:
-            signal = "⚖️ NO EDGE"
+    st.write("### 🧠 Quarter Prediction")
+    st.write(f"Team 1 → {t1_pred:.1f}")
+    st.write(f"Team 2 → {t2_pred:.1f}")
+    st.write(f"Quarter Total → {quarter_total:.1f}")
 
-        # =========================
-        # DISPLAY
-        # =========================
-        st.subheader("📊 Prediction")
+    st.write("### 📈 Full Game")
+    st.write(f"Predicted Total → {full_game:.1f}")
 
-        st.write(f"Score: {team_a} {score_a} - {score_b} {team_b}")
-        st.write(f"Quarter: Q{quarter} | Time: {minutes_elapsed:.1f} min")
+    st.write("### 🎯 Decision")
+    st.write(f"Edge → {edge:.1f}")
+    st.write(f"Signal → {signal}")
 
-        st.markdown("----")
+    st.write("### ⏱ Remaining Minutes Projection")
+    for i in range(1, int(remaining)+1):
+        st.write(f"+{i} min → {(pace*i):.1f} pts")
 
-        st.write(f"🎯 Predicted Total: **{predicted_total:.1f}**")
-        st.write(f"📈 Range: {low:.1f} → {high:.1f}")
 
-        st.write(f"🔵 {team_a}: {pred_a:.1f}")
-        st.write(f"🔴 {team_b}: {pred_b:.1f}")
+# =============================
+# 🏓 TABLE TENNIS MODE (FIXED)
+# =============================
+else:
 
-        st.write(f"⏱ Quarter Prediction: {predicted_quarter:.1f}")
-
-        st.markdown("----")
-
-        st.write(f"📊 Line: {line}")
-        st.write(f"📉 Edge: {edge:.1f}")
-        st.write(f"🚀 Signal: {signal}")
-
-        # Minute projection (remaining)
-        st.markdown("----")
-        st.subheader("⏳ Remaining Minutes Projection")
-
-        remaining_minutes = int(quarter_minutes - minutes_elapsed)
-
-        for m in range(1, remaining_minutes + 1):
-            future_total = total_score + (pps * 60 * m)
-            st.write(f"Minute +{m}: {future_total:.1f}")
-
-        # Save history
-        st.session_state.history.append(
-            f"{team_a} vs {team_b} | {signal} | {predicted_total:.1f}"
-        )
-
-    # AUTO REFRESH
-    time.sleep(2)
-    st.rerun()
-
-# =========================
-# 🏓 TABLE TENNIS MODE
-# =========================
-elif mode == "Table Tennis":
-    st.title("🏓 Table Tennis Momentum Tool")
+    st.title("🏓 Table Tennis Smart Tool")
 
     col1, col2 = st.columns(2)
 
     with col1:
-        player_a = st.text_input("Player A", "A")
-        score_a = st.number_input("Score A", 0, 20, 6)
+        p1 = st.text_input("Player A", "A")
+        score1 = st.number_input("Score A", 0, 20, 8)
 
     with col2:
-        player_b = st.text_input("Player B", "B")
-        score_b = st.number_input("Score B", 0, 20, 6)
+        p2 = st.text_input("Player B", "B")
+        score2 = st.number_input("Score B", 0, 20, 6)
 
-    st.markdown("---")
+    server = st.selectbox("Server", ["A", "B"])
 
-    diff = score_a - score_b
+    diff = score1 - score2
 
-    if diff >= 3:
-        momentum = f"🔥 {player_a} Strong Control"
-    elif diff <= -3:
-        momentum = f"🔥 {player_b} Strong Control"
-    else:
+    # MOMENTUM
+    if abs(diff) <= 1:
         momentum = "⚖️ Balanced"
+    elif abs(diff) == 2:
+        momentum = "➕ Slight Lead"
+    else:
+        momentum = "🔥 Strong Control"
 
+    leader = p1 if diff > 0 else p2
+
+    # EXPECTED FINISH
+    if abs(diff) >= 3:
+        finish = f"{leader} 11-{min(score1,score2)+2}"
+    else:
+        finish = f"{leader} 11-{min(score1,score2)+3}"
+
+    # PRESSURE
+    if max(score1, score2) < 8:
+        pressure = "Normal"
+    elif max(score1, score2) < 10:
+        pressure = "Rising"
+    else:
+        pressure = "🔥 Clutch"
+
+    # EDGE
+    edge = "Lean A" if diff > 1 else "Lean B" if diff < -1 else "No Edge"
+
+    # OUTPUT
     st.subheader("📊 Analysis")
-    st.write(f"Score: {player_a} {score_a} - {score_b} {player_b}")
-    st.write(f"Momentum: {momentum}")
 
-    if score_a >= 9 or score_b >= 9:
-        st.write("⚠️ End Game Pressure Zone")
+    st.write(f"Score → {p1} {score1} - {score2} {p2}")
 
-    # Save history
-    st.session_state.history.append(
-        f"{player_a} vs {player_b} | {momentum}"
-    )
-
-    # AUTO REFRESH
-    time.sleep(2)
-    st.rerun()
+    st.write(f"📊 Momentum → {momentum}")
+    st.write(f"🎯 Expected Finish → {finish}")
+    st.write(f"🔥 Pressure → {pressure}")
+    st.write(f"⚡ Server → {server} advantage")
+    st.write(f"📈 Edge → {edge}")
