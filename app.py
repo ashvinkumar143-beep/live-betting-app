@@ -4,19 +4,11 @@ import time
 st.set_page_config(page_title="V26 Ultra Smart Betting Tool", layout="centered")
 
 # =============================
-# AUTO REFRESH (SAFE VERSION)
-# =============================
-refresh_rate = st.sidebar.slider("Auto Refresh (seconds)", 0, 10, 3)
-
-if refresh_rate > 0:
-    time.sleep(refresh_rate)
-    st.rerun()
-
-# =============================
 # SETTINGS
 # =============================
 st.sidebar.title("⚙️ Settings")
 
+refresh_rate = st.sidebar.slider("Auto Refresh (seconds)", 0, 10, 3)
 boost = st.sidebar.slider("Manual Boost (%)", -10, 10, 0)
 
 mode = st.radio("Select Mode", ["🏀 Basketball", "🎾 Tennis"])
@@ -39,12 +31,9 @@ if mode == "🏀 Basketball":
 
     total = score1 + score2
 
-    # =============================
-    # SMART PACE LOGIC
-    # =============================
     pace = total / minutes
 
-    # Slow down unrealistic pace
+    # SMART ADJUST
     if pace > 6:
         pace *= 0.92
     elif pace < 3:
@@ -53,10 +42,8 @@ if mode == "🏀 Basketball":
     remaining = duration - minutes
 
     predicted_remaining = pace * remaining
-
     quarter_total = total + predicted_remaining
 
-    # Game projection using quarter weighting
     progress = (quarter - 1) + (minutes / duration)
 
     if progress == 0:
@@ -64,16 +51,13 @@ if mode == "🏀 Basketball":
     else:
         full_game = total / progress
 
-    # BOOST
     full_game *= (1 + boost/100)
 
-    # Split teams
     ratio = 0.5 if total == 0 else score1 / total
 
     pred1 = full_game * ratio
     pred2 = full_game * (1 - ratio)
 
-    # EDGE FILTER (smarter)
     edge = full_game - line
 
     if edge > 6:
@@ -87,16 +71,12 @@ if mode == "🏀 Basketball":
     else:
         signal = "⚖️ NO BET"
 
-    # =============================
-    # OUTPUT
-    # =============================
     st.subheader("📊 Prediction")
 
     st.write(f"Predicted Score 1 → {pred1:.1f}")
     st.write(f"Predicted Score 2 → {pred2:.1f}")
     st.write(f"Game Total → {full_game:.1f}")
-
-    st.write(f"Quarter Projection → {quarter_total:.1f}")
+    st.write(f"Quarter → {quarter_total:.1f}")
 
     st.write("### 🎯 Signal")
     st.write(f"Edge → {edge:.1f}")
@@ -132,11 +112,7 @@ else:
 
     line = st.number_input("Line", value=21.5)
 
-    # =============================
-    # LOGIC
-    # =============================
     diff1 = set1_a - set1_b
-
     momentum = 1 if diff1 > 0 else -1
 
     if set2_on:
@@ -162,8 +138,6 @@ else:
     add = 4 if abs(current_diff) < 2 else 3
 
     final_total = total + add
-
-    # BOOST
     final_total *= (1 + boost/100)
 
     low = final_total - 2
@@ -178,9 +152,6 @@ else:
     else:
         signal = "⚖️ NO BET"
 
-    # =============================
-    # OUTPUT
-    # =============================
     st.subheader("📊 Prediction")
 
     st.write(f"Winner → {winner}")
@@ -193,3 +164,11 @@ else:
     st.write("### 🎯 Signal")
     st.write(f"Edge → {edge:.1f}")
     st.write(signal)
+
+# =============================
+# SAFE AUTO REFRESH (AFTER UI)
+# =============================
+if refresh_rate > 0:
+    st.caption(f"🔄 Auto refresh every {refresh_rate}s")
+    time.sleep(refresh_rate)
+    st.rerun()
