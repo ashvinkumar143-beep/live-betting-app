@@ -1,15 +1,15 @@
 import streamlit as st
 import time
 
-st.set_page_config(page_title="V26 Ultra Smart Betting Tool", layout="centered")
+st.set_page_config(page_title="V27 Auto Betting Tool", layout="centered")
 
 # =============================
 # SETTINGS
 # =============================
 st.sidebar.title("⚙️ Settings")
 
-refresh_rate = st.sidebar.slider("Auto Refresh (seconds)", 0, 10, 3)
-boost = st.sidebar.slider("Manual Boost (%)", -10, 10, 0)
+auto_refresh = st.sidebar.checkbox("Auto Refresh", value=True)
+refresh_sec = st.sidebar.slider("Refresh Seconds", 2, 10, 3)
 
 mode = st.radio("Select Mode", ["🏀 Basketball", "🎾 Tennis"])
 
@@ -18,25 +18,25 @@ mode = st.radio("Select Mode", ["🏀 Basketball", "🎾 Tennis"])
 # =============================
 if mode == "🏀 Basketball":
 
-    st.title("🏀 Smart Pace Predictor")
+    st.title("🏀 Quarter Pace Predictor")
 
-    score1 = st.number_input("Score 1", 0, 200, 50)
-    score2 = st.number_input("Score 2", 0, 200, 48)
+    score1 = st.number_input("Score 1", value=0)
+    score2 = st.number_input("Score 2", value=0)
 
     quarter = st.selectbox("Quarter", [1,2,3,4])
-    minutes = st.number_input("Minutes Elapsed", 0.1, 12.0, 6.0)
+    minutes = st.number_input("Minutes Elapsed", min_value=0.1, value=5.0)
 
     duration = st.selectbox("Quarter Duration", [10, 12])
-    line = st.number_input("Line", value=160.0)
+    line = st.number_input("Quarter Line", value=40.0)
 
     total = score1 + score2
 
+    # Pace
     pace = total / minutes
 
-    # SMART ADJUST
-    if pace > 6:
+    if pace > 4.8:
         pace *= 0.92
-    elif pace < 3:
+    elif pace < 3.2:
         pace *= 1.05
 
     remaining = duration - minutes
@@ -44,27 +44,36 @@ if mode == "🏀 Basketball":
     predicted_remaining = pace * remaining
     quarter_total = total + predicted_remaining
 
-    progress = (quarter - 1) + (minutes / duration)
-
-    if progress == 0:
-        full_game = quarter_total * 4
-    else:
-        full_game = total / progress
-
-    full_game *= (1 + boost/100)
-
     ratio = 0.5 if total == 0 else score1 / total
 
-    pred1 = full_game * ratio
-    pred2 = full_game * (1 - ratio)
+    team1_q = quarter_total * ratio
+    team2_q = quarter_total * (1 - ratio)
 
-    edge = full_game - line
+    progress = (quarter - 1) + (minutes / duration)
+    full_game = total / progress if progress > 0 else quarter_total * 4
 
-    if edge > 6:
+    # Labels
+    if pace > 4.5:
+        pace_label = "🔥 FAST"
+    elif pace < 3.5:
+        pace_label = "🧊 SLOW"
+    else:
+        pace_label = "⚖️ NORMAL"
+
+    if minutes < 3:
+        stability = "LOW"
+    elif minutes < 6:
+        stability = "MEDIUM"
+    else:
+        stability = "HIGH"
+
+    edge = quarter_total - line
+
+    if edge > 4:
         signal = "🔥 STRONG OVER"
     elif edge > 2:
         signal = "📈 OVER"
-    elif edge < -6:
+    elif edge < -4:
         signal = "❄️ STRONG UNDER"
     elif edge < -2:
         signal = "📉 UNDER"
@@ -73,17 +82,20 @@ if mode == "🏀 Basketball":
 
     st.subheader("📊 Prediction")
 
-    st.write(f"Predicted Score 1 → {pred1:.1f}")
-    st.write(f"Predicted Score 2 → {pred2:.1f}")
+    st.write(f"Quarter Score 1 → {team1_q:.1f}")
+    st.write(f"Quarter Score 2 → {team2_q:.1f}")
+    st.write(f"Quarter Total → {quarter_total:.1f}")
+
     st.write(f"Game Total → {full_game:.1f}")
-    st.write(f"Quarter → {quarter_total:.1f}")
+
+    st.write(f"Pace → {pace_label}")
+    st.write(f"Stability → {stability}")
 
     st.write("### 🎯 Signal")
     st.write(f"Edge → {edge:.1f}")
     st.write(signal)
 
     st.write("### ⏳ Remaining Minutes")
-
     for i in range(1, int(remaining)+1):
         val = total + pace * i
         st.write(f"+{i} min → {val:.1f}")
@@ -93,52 +105,54 @@ if mode == "🏀 Basketball":
 # =============================
 else:
 
-    st.title("🎾 Smart Set Predictor")
+    st.title("🎾 Tennis Predictor")
 
-    set1_a = st.number_input("Set 1 A", 0, 7, 6)
-    set1_b = st.number_input("Set 1 B", 0, 7, 3)
+    set1_a = st.number_input("Set 1 A", value=6)
+    set1_b = st.number_input("Set 1 B", value=3)
 
-    set2_on = st.checkbox("Set 2 Played")
+    cur_a = st.number_input("Current A", value=2)
+    cur_b = st.number_input("Current B", value=2)
 
-    if set2_on:
-        set2_a = st.number_input("Set 2 A", 0, 7, 4)
-        set2_b = st.number_input("Set 2 B", 0, 7, 6)
-    else:
-        set2_a = 0
-        set2_b = 0
+    server = st.selectbox("Server", ["A", "B"])
 
-    cur_a = st.number_input("Current A", 0, 7, 2)
-    cur_b = st.number_input("Current B", 0, 7, 1)
+    serve_a = st.number_input("Serve % A", value=70)
+    serve_b = st.number_input("Serve % B", value=62)
 
-    line = st.number_input("Line", value=21.5)
+    break_a = st.number_input("Break Won A", value=2)
+    break_b = st.number_input("Break Won B", value=1)
 
-    diff1 = set1_a - set1_b
-    momentum = 1 if diff1 > 0 else -1
+    faced_a = st.number_input("Break Faced A", value=3)
+    faced_b = st.number_input("Break Faced B", value=4)
 
-    if set2_on:
-        diff2 = set2_a - set2_b
-        momentum += 1 if diff2 > 0 else -1
+    line = st.number_input("Total Line", value=21.5)
 
-    current_diff = cur_a - cur_b
+    server_bonus = 0.5 if server == "A" else -0.5
 
-    score = momentum + (current_diff * 0.7)
+    set_diff = set1_a - set1_b
+
+    score = (
+        (serve_a - serve_b) * 0.05 +
+        (break_a - break_b) * 1.2 -
+        (faced_a - faced_b) * 0.5 +
+        server_bonus +
+        (set_diff * 0.3) +
+        ((cur_a - cur_b) * 0.5)
+    )
 
     if score > 1:
         winner = "A"
-        next_set = "6-3 / 6-4"
+        next_set = "6-4"
     elif score < -1:
         winner = "B"
-        next_set = "3-6 / 4-6"
+        next_set = "4-6"
     else:
         winner = "Close"
         next_set = "7-6"
 
-    total = set1_a + set1_b + set2_a + set2_b + cur_a + cur_b
+    total_now = set1_a + set1_b + cur_a + cur_b
 
-    add = 4 if abs(current_diff) < 2 else 3
-
-    final_total = total + add
-    final_total *= (1 + boost/100)
+    add = 5 if abs(cur_a - cur_b) < 2 else 3
+    final_total = total_now + add
 
     low = final_total - 2
     high = final_total + 2
@@ -166,9 +180,8 @@ else:
     st.write(signal)
 
 # =============================
-# SAFE AUTO REFRESH (AFTER UI)
+# AUTO REFRESH (SAFE)
 # =============================
-if refresh_rate > 0:
-    st.caption(f"🔄 Auto refresh every {refresh_rate}s")
-    time.sleep(refresh_rate)
+if auto_refresh:
+    time.sleep(refresh_sec)
     st.rerun()
